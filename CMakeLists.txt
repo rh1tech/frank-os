@@ -18,33 +18,17 @@ pico_sdk_init()
 # Tell FreeRTOS port where to find FreeRTOSConfig.h
 set(FREERTOS_CONFIG_FILE_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/src CACHE STRING "")
 
-# HDMI driver as separate static library (no FreeRTOS dependency)
-add_library(hdmi_driver STATIC
-    drivers/hdmi/hdmi.c
-)
-target_include_directories(hdmi_driver PUBLIC
-    ${CMAKE_CURRENT_LIST_DIR}/drivers/hdmi
-)
-target_include_directories(hdmi_driver PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}/src
-)
-target_link_libraries(hdmi_driver
-    pico_stdlib
-    pico_multicore
-    hardware_dma
-    hardware_pio
-    hardware_clocks
-    hardware_irq
-)
+# DispHSTX display driver (DVI via HSTX peripheral)
+add_subdirectory(lib/DispHSTX DispHSTX)
 
-# PS/2 drivers
+# Unified PS/2 driver (keyboard + mouse)
 add_subdirectory(drivers/ps2)
-add_subdirectory(drivers/ps2kbd)
 
 # Main executable
 add_executable(rhea
     src/main.c
     src/display.c
+    src/keyboard.c
     src/font.c
     src/gfx.c
     src/cursor.c
@@ -54,18 +38,18 @@ add_executable(rhea
 )
 target_include_directories(rhea PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/src
-    ${CMAKE_CURRENT_LIST_DIR}/drivers/hdmi
     ${CMAKE_CURRENT_LIST_DIR}/drivers/ps2
-    ${CMAKE_CURRENT_LIST_DIR}/drivers/ps2kbd
 )
+
+# Force-include our DispHSTX config so the library sees it before its own _config.h
+target_compile_options(rhea PRIVATE -include ${CMAKE_CURRENT_LIST_DIR}/src/config.h)
+
 target_link_libraries(rhea
-    hdmi_driver
+    DispHSTX
     ps2_driver
-    ps2kbd
     pico_stdlib
     pico_multicore
     hardware_clocks
-    hardware_pio
     hardware_gpio
     FreeRTOS-Kernel-Heap4
 )

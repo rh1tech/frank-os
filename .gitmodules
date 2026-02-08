@@ -1,3 +1,6 @@
 [submodule "lib/FreeRTOS-Kernel"]
 	path = lib/FreeRTOS-Kernel
 	url = https://github.com/raspberrypi/FreeRTOS-Kernel.git
+[submodule "lib/DispHSTX"]
+	path = lib/DispHSTX
+	url = https://github.com/Panda381/DispHSTX.git
