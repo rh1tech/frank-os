@@ -223,6 +223,18 @@ bool wm_post_event_focused(const window_event_t *event);
 /* Dispatch all queued events (call from main loop) */
 void wm_dispatch_events(void);
 
+/* Process a raw mouse input event from the input task.
+ * Handles window-manager-level behavior: hit-testing, focus changes,
+ * title-bar dragging, close button.  Client-area events are forwarded
+ * to the target window's event handler via the event queue.
+ * type = WM_LBUTTONDOWN / WM_LBUTTONUP / WM_MOUSEMOVE / WM_RBUTTONDOWN / WM_RBUTTONUP
+ * x,y  = screen coordinates */
+void wm_handle_mouse_input(uint8_t type, int16_t x, int16_t y, uint8_t buttons);
+
+/* Query active drag state for outline drawing.
+ * Returns true if a drag is in progress, fills output params. */
+bool wm_get_drag_outline(hwnd_t *hwnd, int16_t *dx, int16_t *dy);
+
 /*==========================================================================
  * Input state queries
  *=========================================================================*/

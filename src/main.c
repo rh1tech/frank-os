@@ -49,11 +49,8 @@ static void usb_service_task(void *params) {
 
 static void heartbeat_task(void *params) {
     (void)params;
-    int count = 0;
     for (;;) {
         gpio_put(LED_PIN, 1);
-        printf("tick %d\n", count++);
-        stdio_flush();
         vTaskDelay(pdMS_TO_TICKS(500));
         gpio_put(LED_PIN, 0);
         vTaskDelay(pdMS_TO_TICKS(500));
@@ -97,8 +94,7 @@ static void input_task(void *params) {
 
         key_event_t kev;
         while (keyboard_get_event(&kev)) {
-            printf("KEY %s: ascii=0x%02X hid=0x%02X\n",
-                   kev.pressed ? "DN" : "UP", kev.ascii, kev.hid_code);
+            (void)kev; /* TODO: route keyboard events to WM */
         }
 
         /* Poll mouse */
@@ -119,32 +115,19 @@ static void input_task(void *params) {
             wm_set_cursor_pos(cur_x, cur_y);
             wm_set_mouse_buttons(buttons);
 
-            /* Post mouse move event */
-            window_event_t ev;
-            memset(&ev, 0, sizeof(ev));
-            ev.type = WM_MOUSEMOVE;
-            ev.mouse.x = cur_x;
-            ev.mouse.y = cur_y;
-            ev.mouse.buttons = buttons;
-            wm_post_event_focused(&ev);
+            /* Route all mouse events through the WM handler for
+             * hit-testing, focus management, and title-bar dragging */
+            wm_handle_mouse_input(WM_MOUSEMOVE, cur_x, cur_y, buttons);
 
             /* Detect button transitions */
             uint8_t changed = buttons ^ prev_buttons;
             if (changed & 0x01) { /* left button */
-                memset(&ev, 0, sizeof(ev));
-                ev.type = (buttons & 0x01) ? WM_LBUTTONDOWN : WM_LBUTTONUP;
-                ev.mouse.x = cur_x;
-                ev.mouse.y = cur_y;
-                ev.mouse.buttons = buttons;
-                wm_post_event_focused(&ev);
+                uint8_t type = (buttons & 0x01) ? WM_LBUTTONDOWN : WM_LBUTTONUP;
+                wm_handle_mouse_input(type, cur_x, cur_y, buttons);
             }
             if (changed & 0x02) { /* right button */
-                memset(&ev, 0, sizeof(ev));
-                ev.type = (buttons & 0x02) ? WM_RBUTTONDOWN : WM_RBUTTONUP;
-                ev.mouse.x = cur_x;
-                ev.mouse.y = cur_y;
-                ev.mouse.buttons = buttons;
-                wm_post_event_focused(&ev);
+                uint8_t type = (buttons & 0x02) ? WM_RBUTTONDOWN : WM_RBUTTONUP;
+                wm_handle_mouse_input(type, cur_x, cur_y, buttons);
             }
             prev_buttons = buttons;
 

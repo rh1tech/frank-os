@@ -161,6 +161,11 @@ void wm_invalidate(hwnd_t hwnd);
 /* Set title string */
 void wm_set_title(hwnd_t hwnd, const char *title);
 
+/* Hit-test all visible windows top-to-bottom.
+ * Returns the hwnd of the topmost window containing the point,
+ * or HWND_NULL if the point is on the desktop. */
+hwnd_t wm_window_at_point(int16_t x, int16_t y);
+
 /* Compositor: repaint all visible windows back-to-front, then swap buffers */
 void wm_composite(void);
 

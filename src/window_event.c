@@ -1,4 +1,5 @@
 #include "window_event.h"
+#include "window_theme.h"
 #include "display.h"
 #include <string.h>
 #include "hardware/sync.h"
@@ -39,6 +40,13 @@ static volatile uint8_t mouse_buttons_live;
 /* Compositor dirty flag — avoids recompositing idle frames.
  * Starts dirty so the first frame is always drawn. */
 static volatile uint8_t compositor_dirty = 1;
+
+/* Drag state — managed by wm_handle_mouse_input() */
+static hwnd_t  drag_hwnd = HWND_NULL;   /* window being dragged */
+static int16_t drag_offset_x;            /* mouse-to-window-origin offset */
+static int16_t drag_offset_y;
+static int16_t drag_pos_x;              /* proposed position during drag */
+static int16_t drag_pos_y;
 
 void wm_event_init(void) {
     int lock_num = spin_lock_claim_unused(true);
@@ -163,5 +171,119 @@ void wm_mark_dirty(void) {
 bool wm_needs_composite(void) {
     if (!compositor_dirty) return false;
     compositor_dirty = 0;
+    return true;
+}
+
+/*==========================================================================
+ * Mouse input handler — drag, focus, hit-test
+ *=========================================================================*/
+
+static inline void forward_mouse_event(uint8_t type, int16_t x, int16_t y,
+                                        uint8_t buttons, hwnd_t target) {
+    window_t *win = wm_get_window(target);
+    if (!win) return;
+
+    window_event_t ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.type = type;
+    point_t co = theme_client_origin(&win->frame);
+    ev.mouse.x = x - co.x;
+    ev.mouse.y = y - co.y;
+    ev.mouse.buttons = buttons;
+    wm_post_event(target, &ev);
+}
+
+void wm_handle_mouse_input(uint8_t type, int16_t x, int16_t y, uint8_t buttons) {
+    /* ---- Dragging in progress ---- */
+    if (drag_hwnd != HWND_NULL) {
+        if (type == WM_MOUSEMOVE) {
+            drag_pos_x = x - drag_offset_x;
+            drag_pos_y = y - drag_offset_y;
+            compositor_dirty = 1;
+            return;
+        }
+        if (type == WM_LBUTTONUP) {
+            /* Drop: move window to final position */
+            wm_move_window(drag_hwnd, drag_pos_x, drag_pos_y);
+            drag_hwnd = HWND_NULL;
+            compositor_dirty = 1;
+            return;
+        }
+        /* Other events during drag are ignored */
+        return;
+    }
+
+    /* ---- Left button down: hit-test to decide action ---- */
+    if (type == WM_LBUTTONDOWN) {
+        hwnd_t target = wm_window_at_point(x, y);
+        if (target == HWND_NULL) return; /* clicked desktop */
+
+        window_t *win = wm_get_window(target);
+        if (!win) return;
+
+        /* Focus and raise the clicked window */
+        wm_set_focus(target);
+
+        uint8_t zone = theme_hit_test(&win->frame, win->flags, x, y);
+
+        switch (zone) {
+            case HT_TITLEBAR:
+                if (win->flags & WF_MOVABLE) {
+                    drag_hwnd = target;
+                    drag_offset_x = x - win->frame.x;
+                    drag_offset_y = y - win->frame.y;
+                    drag_pos_x = win->frame.x;
+                    drag_pos_y = win->frame.y;
+                }
+                return;
+
+            case HT_CLOSE:
+                if (win->flags & WF_CLOSABLE) {
+                    window_event_t ev;
+                    memset(&ev, 0, sizeof(ev));
+                    ev.type = WM_CLOSE;
+                    wm_post_event(target, &ev);
+                }
+                return;
+
+            case HT_CLIENT:
+                forward_mouse_event(WM_LBUTTONDOWN, x, y, buttons, target);
+                return;
+
+            default:
+                return;
+        }
+    }
+
+    /* ---- Left button up (not dragging) ---- */
+    if (type == WM_LBUTTONUP) {
+        hwnd_t focus = wm_get_focus();
+        if (focus != HWND_NULL)
+            forward_mouse_event(WM_LBUTTONUP, x, y, buttons, focus);
+        return;
+    }
+
+    /* ---- Mouse move (not dragging) ---- */
+    if (type == WM_MOUSEMOVE) {
+        hwnd_t focus = wm_get_focus();
+        if (focus != HWND_NULL)
+            forward_mouse_event(WM_MOUSEMOVE, x, y, buttons, focus);
+        return;
+    }
+
+    /* ---- Right button events: forward to focused window ---- */
+    if (type == WM_RBUTTONDOWN || type == WM_RBUTTONUP) {
+        hwnd_t focus = wm_get_focus();
+        if (focus != HWND_NULL)
+            forward_mouse_event(type, x, y, buttons, focus);
+        return;
+    }
+}
+
+bool wm_get_drag_outline(hwnd_t *hwnd, int16_t *dx, int16_t *dy) {
+    if (drag_hwnd == HWND_NULL) return false;
+    if (hwnd) *hwnd = drag_hwnd;
+    if (dx) *dx = drag_pos_x;
+    if (dy) *dy = drag_pos_y;
     return true;
 }

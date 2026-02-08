@@ -246,6 +246,26 @@ void wm_set_title(hwnd_t hwnd, const char *title) {
 }
 
 /*==========================================================================
+ * Hit-test: find topmost window at a screen point
+ *=========================================================================*/
+
+hwnd_t wm_window_at_point(int16_t x, int16_t y) {
+    /* Walk z-stack top to bottom */
+    for (int i = (int)z_count - 1; i >= 0; i--) {
+        hwnd_t hwnd = z_stack[i];
+        window_t *win = &windows[hwnd - 1];
+        if (!(win->flags & WF_VISIBLE)) continue;
+
+        rect_t *f = &win->frame;
+        if (x >= f->x && x < f->x + f->w &&
+            y >= f->y && y < f->y + f->h) {
+            return hwnd;
+        }
+    }
+    return HWND_NULL;
+}
+
+/*==========================================================================
  * Decoration drawing
  *=========================================================================*/
 
@@ -375,6 +395,20 @@ void wm_composite(void) {
         }
 
         win->flags &= ~WF_DIRTY;
+    }
+
+    /* Draw drag outline if a window is being dragged */
+    {
+        hwnd_t dh;
+        int16_t dx, dy;
+        if (wm_get_drag_outline(&dh, &dx, &dy)) {
+            window_t *dw = wm_get_window(dh);
+            if (dw) {
+                gfx_rect(dx, dy, dw->frame.w, dw->frame.h, COLOR_BLACK);
+                gfx_rect(dx + 1, dy + 1,
+                          dw->frame.w - 2, dw->frame.h - 2, COLOR_WHITE);
+            }
+        }
     }
 
     /* Draw mouse cursor as final layer */

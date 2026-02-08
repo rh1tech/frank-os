@@ -378,9 +378,8 @@ static bool mouse_send_command_param(uint8_t cmd, uint8_t param) {
 // Mouse Packet Processing
 //=============================================================================
 
-// Track when button was last pressed/released for timeout
-static uint32_t mouse_button_press_time = 0;
 static uint8_t mouse_last_buttons = 0;
+static uint8_t mouse_reported_buttons = 0;  /* last value returned by get_state */
 static uint32_t mouse_valid_packet_count = 0;
 
 static void mouse_process_packet(void) {
@@ -422,11 +421,6 @@ static void mouse_process_packet(void) {
 
     if (new_buttons != mouse_last_buttons) {
         mouse_last_buttons = new_buttons;
-
-        // Track when buttons are pressed for timeout detection
-        if (new_buttons != 0) {
-            mouse_button_press_time = time_us_32();
-        }
     }
 
     // Update button state
@@ -704,23 +698,10 @@ bool ps2_mouse_get_state(int16_t *dx, int16_t *dy, int8_t *wheel, uint8_t *butto
     uint irq_num = (ps2_pio == pio0) ? PIO0_IRQ_1 : PIO1_IRQ_1;
     irq_set_enabled(irq_num, false);
 
-    // FAILSAFE: If button has been pressed for > 150ms without release,
-    // force it to released state (handles stuck button bug)
-    // Normal clicks are < 150ms, so this provides quick response
-    if (mouse_state.buttons != 0 && mouse_button_press_time != 0) {
-        uint32_t button_held_us = time_us_32() - mouse_button_press_time;
-        if (button_held_us > 150000) {  // 150ms timeout
-            printf("PS2: FAILSAFE - Button stuck for %lu ms, forcing release\n",
-                   button_held_us / 1000);
-            mouse_state.buttons = 0;
-            mouse_last_buttons = 0;
-            mouse_button_press_time = 0;
-        }
-    }
-
     bool has_data = (mouse_state.delta_x != 0 ||
                      mouse_state.delta_y != 0 ||
-                     mouse_state.wheel != 0);
+                     mouse_state.wheel != 0 ||
+                     mouse_state.buttons != mouse_reported_buttons);
 
     if (dx) *dx = mouse_state.delta_x;
     if (dy) *dy = mouse_state.delta_y;
@@ -730,6 +711,7 @@ bool ps2_mouse_get_state(int16_t *dx, int16_t *dy, int8_t *wheel, uint8_t *butto
     mouse_state.delta_x = 0;
     mouse_state.delta_y = 0;
     mouse_state.wheel = 0;
+    mouse_reported_buttons = mouse_state.buttons;
 
     // Re-enable mouse interrupt
     irq_set_enabled(irq_num, true);
