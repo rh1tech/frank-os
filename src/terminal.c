@@ -152,14 +152,14 @@ static void terminal_paint(hwnd_t hwnd) {
         }
     }
 
-    /* Draw blinking block cursor using fast hline */
+    /* Draw blinking DOS-style underline cursor (bottom 2 scanlines) */
     if (t->cursor_visible &&
         t->cursor_col >= 0 && t->cursor_col < TERM_COLS &&
         t->cursor_row >= 0 && t->cursor_row < TERM_ROWS) {
         int cx = ox + t->cursor_col * TERM_FONT_W;
         int cy = oy + t->cursor_row * TERM_FONT_H;
-        for (int r = 0; r < TERM_FONT_H; r++)
-            display_hline_safe(cx, cy + r, TERM_FONT_W, t->fg_color);
+        display_hline_safe(cx, cy + TERM_FONT_H - 2, TERM_FONT_W, t->fg_color);
+        display_hline_safe(cx, cy + TERM_FONT_H - 1, TERM_FONT_W, t->fg_color);
     }
 }
 
