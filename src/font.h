@@ -27,12 +27,14 @@ static inline const uint8_t *font8x16_get_glyph(uint8_t c) {
     return &font_8x16[c * 16];
 }
 
-/* Default font (8x16) — used by gfx.c and window drawing */
+/* Default font (8x8) — used by gfx.c and window title/text drawing */
 #define FONT_WIDTH   8
-#define FONT_HEIGHT  16
+#define FONT_HEIGHT  8
 
 static inline const uint8_t *font_get_glyph(char c) {
-    return &font_8x16[(uint8_t)c * 16];
+    uint8_t u = (uint8_t)c;
+    if (u >= 'a' && u <= 'z') u -= 32;
+    return &font_8x8[u * 8];
 }
 
 #endif /* FONT_H */

@@ -25,8 +25,8 @@
 
 /* op_console computes buffer size as (screen_w * screen_h * bitness) >> 3.
  * With our values (320*240*4)/8 = 38400.  Allocate at least that much so
- * save/restore_console don't overflow, even though only 4800 bytes are
- * the actual text content. */
+ * save/restore_console don't overflow, even though only 2800 bytes are
+ * the actual text content (70*20*2). */
 #define SCREEN_BUF_COMPAT_SIZE  ((320 * 240 * 4) >> 3)  /* 38400 */
 
 /* Buffer access macros */
@@ -93,7 +93,7 @@ static void terminal_input_push(terminal_t *t, uint8_t ch) {
 }
 
 /*==========================================================================
- * Paint handler — draws the character grid using 8x8 font
+ * Paint handler — draws the character grid using 8x16 font
  *=========================================================================*/
 
 static void terminal_paint(hwnd_t hwnd) {
@@ -113,8 +113,8 @@ static void terminal_paint(hwnd_t hwnd) {
             int px = col * TERM_FONT_W;
             int py = row * TERM_FONT_H;
 
-            /* Draw using 8x8 font */
-            const uint8_t *glyph = font8x8_get_glyph(ch);
+            /* Draw using 8x16 font */
+            const uint8_t *glyph = font8x16_get_glyph(ch);
             for (int gr = 0; gr < TERM_FONT_H; gr++) {
                 uint8_t bits = glyph[gr];
                 for (int gc = 0; gc < TERM_FONT_W; gc++) {
@@ -213,10 +213,10 @@ hwnd_t terminal_create(void) {
     t->input_sem = xSemaphoreCreateCounting(64, 0);
 
     /* Compute outer window size:
-     * client = 640 x 240 (80 cols * 8px, 30 rows * 8px)
+     * client = 560 x 320 (70 cols * 8px, 20 rows * 16px)
      * + title bar + borders */
-    int16_t client_w = TERM_COLS * TERM_FONT_W;  /* 640 */
-    int16_t client_h = TERM_ROWS * TERM_FONT_H;  /* 240 */
+    int16_t client_w = TERM_COLS * TERM_FONT_W;  /* 560 */
+    int16_t client_h = TERM_ROWS * TERM_FONT_H;  /* 320 */
     int16_t outer_w = client_w + 2 * THEME_BORDER_WIDTH;
     int16_t outer_h = client_h + THEME_TITLE_HEIGHT + 2 * THEME_BORDER_WIDTH;
 

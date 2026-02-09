@@ -6,11 +6,11 @@
 #include <stdbool.h>
 #include "window.h"
 
-/* Terminal console dimensions (8x8 font in 640x240 client area) */
-#define TERM_COLS   80
-#define TERM_ROWS   30
+/* Terminal console dimensions (8x16 font in 560x320 client area) */
+#define TERM_COLS   70
+#define TERM_ROWS   20
 #define TERM_FONT_W  8
-#define TERM_FONT_H  8
+#define TERM_FONT_H  16
 
 /*
  * Text-mode buffer layout (MOS2-compatible):
