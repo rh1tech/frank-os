@@ -434,7 +434,7 @@ void keyboard_poll(void) {
     while (limit-- > 0 && (byte = ps2_kbd_get_byte()) >= 0) {
         /* Feed to MOS2 scancode handler (PS/2 set 2 → XT conversion) */
         mos2_feed_scancode((uint8_t)byte);
-        /* Feed to Rhea windowing system (PS/2 set 2 → HID) */
+        /* Feed to FRANK OS windowing system (PS/2 set 2 → HID) */
         process_scancode((uint8_t)byte);
     }
 }

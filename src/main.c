@@ -284,7 +284,7 @@ int main(void) {
         g_crash_dump.magic = 0;
     }
 
-    printf("\n== Rhea OS ==\n");
+    printf("\n== FRANK OS ==\n");
     printf("CPU: %lu MHz\n", (unsigned long)(clock_get_hz(clk_sys) / 1000000));
     printf("Scheduler: FreeRTOS\n");
     printf("Display: DispHSTX DVI\n");

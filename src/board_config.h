@@ -4,7 +4,7 @@
 #include "hardware/vreg.h"
 
 /*
- * Board Configuration for Rhea OS
+ * Board Configuration for FRANK OS
  *
  * M2-only build (M1 is no longer supported).
  *
@@ -65,7 +65,7 @@ static inline uint get_psram_pin(void) {
 #endif
 
 //=============================================================================
-// Audio (not connected on Rhea — stubs for MOS2 compat)
+// Audio (not connected on FRANK OS — stubs for MOS2 compat)
 //=============================================================================
 #define PWM_PIN0    20
 #define PWM_PIN1    21

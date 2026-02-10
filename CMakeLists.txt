@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.13)
 
-set(PICO_BOARD rhea_m2)
+set(PICO_BOARD frank_m2)
 set(PICO_BOARD_HEADER_DIRS ${CMAKE_CURRENT_LIST_DIR}/boards)
 set(PICO_PLATFORM rp2350-arm-s)
 
@@ -9,7 +9,7 @@ set(FREERTOS_KERNEL_PATH ${CMAKE_CURRENT_LIST_DIR}/lib/FreeRTOS-Kernel)
 include(pico_sdk_import.cmake)
 include(FreeRTOS_Kernel_import.cmake)
 
-project(rhea C CXX ASM)
+project(frankos C CXX ASM)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 20)
@@ -41,8 +41,8 @@ file(GLOB MUSL_SRC "src/musl/*.c")
 file(GLOB POSIX_SRC "src/posix.1/*.c" "src/posix.1/sys/*.c")
 
 # Main executable
-add_executable(rhea
-    # Rhea core
+add_executable(frankos
+    # FRANK OS core
     src/main.c
     src/display.c
     src/keyboard.c
@@ -77,7 +77,7 @@ add_executable(rhea
     # PSRAM allocator (always compiled — returns NULL when no HW present)
     drivers/psram/psram.c
 )
-target_include_directories(rhea PRIVATE
+target_include_directories(frankos PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/src
     ${CMAKE_CURRENT_LIST_DIR}/drivers/ps2
     ${CMAKE_CURRENT_LIST_DIR}/drivers/fatfs
@@ -90,15 +90,15 @@ target_include_directories(rhea PRIVATE
 
 # PSRAM HW init (only when PSRAM_SPEED is set)
 if(PSRAM_SPEED)
-    target_sources(rhea PRIVATE drivers/psram/psram_init.c)
-    target_compile_definitions(rhea PRIVATE PSRAM_MAX_FREQ_MHZ=${PSRAM_SPEED})
+    target_sources(frankos PRIVATE drivers/psram/psram_init.c)
+    target_compile_definitions(frankos PRIVATE PSRAM_MAX_FREQ_MHZ=${PSRAM_SPEED})
 endif()
 
 # Force-include our DispHSTX config so the library sees it before its own _config.h
-target_compile_options(rhea PRIVATE -include ${CMAKE_CURRENT_LIST_DIR}/src/config.h)
+target_compile_options(frankos PRIVATE -include ${CMAKE_CURRENT_LIST_DIR}/src/config.h)
 
 # MOS2 code uses int↔ptr casts extensively; relax these warnings
-target_compile_options(rhea PRIVATE
+target_compile_options(frankos PRIVATE
     -Wno-int-conversion
     -Wno-incompatible-pointer-types
     -Wno-discarded-qualifiers
@@ -107,7 +107,7 @@ target_compile_options(rhea PRIVATE
 )
 
 # MOS2 compile definitions
-target_compile_definitions(rhea PRIVATE
+target_compile_definitions(frankos PRIVATE
     FIRMWARE_OFFSET=256
     M_API_VERSION=27
     MIN_API_VERSION=14
@@ -119,7 +119,7 @@ target_compile_definitions(rhea PRIVATE
     BEEPER_PIN=22
 )
 
-target_link_libraries(rhea
+target_link_libraries(frankos
     DispHSTX
     ps2_driver
     sdcard
@@ -137,13 +137,13 @@ target_link_libraries(rhea
 # Place MOS2 system function table at flash address 0x103FF000.
 # On RP2350 with 4MB flash, reads from 0x10FFF000 (the canonical MOS2 address)
 # wrap to physical flash offset 0x3FF000, which is where this table lives.
-target_link_options(rhea PRIVATE
+target_link_options(frankos PRIVATE
     -Wl,--section-start=.sys_table=0x103FF000
     -Wl,--undefined=sys_table_ptrs
 )
 
 # USB output for printf, no UART
-pico_enable_stdio_usb(rhea 1)
-pico_enable_stdio_uart(rhea 0)
+pico_enable_stdio_usb(frankos 1)
+pico_enable_stdio_uart(frankos 0)
 
-pico_add_extra_outputs(rhea)
+pico_add_extra_outputs(frankos)

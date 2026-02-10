@@ -833,7 +833,7 @@ a:
     }
     printf("[load_app] file opened, size=%lu, heap=%u\n",
            (unsigned long)f->obj.objsize, (unsigned)xPortGetFreeHeapSize());
-    /* Flash loading disabled on Rhea: Core 1 runs bare-metal HSTX DMA
+    /* Flash loading disabled on FRANK OS: Core 1 runs bare-metal HSTX DMA
      * without the SDK multicore lockout handler, so flash_block() would
      * hang at multicore_lockout_start_blocking(). */
     bool try_to_use_flash = false;

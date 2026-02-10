@@ -28,12 +28,12 @@ bool sdcard_mount(void) {
     mounted = true;
     printf("SD card mounted\n");
 
-    /* Create /RHEA directory if it doesn't exist */
+    /* Create /FOS directory if it doesn't exist */
     FILINFO fno;
-    if (f_stat("/RHEA", &fno) != FR_OK) {
-        res = f_mkdir("/RHEA");
+    if (f_stat("/FOS", &fno) != FR_OK) {
+        res = f_mkdir("/FOS");
         if (res == FR_OK) {
-            printf("Created /RHEA directory\n");
+            printf("Created /FOS directory\n");
         }
     }
 

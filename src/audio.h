@@ -1,2 +1,2 @@
-/* audio.h - Stub for Rhea (no I2S audio hardware) */
+/* audio.h - Stub for FRANK OS (no I2S audio hardware) */
 #pragma once

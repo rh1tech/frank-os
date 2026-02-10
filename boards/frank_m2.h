@@ -1,5 +1,5 @@
 /*
- * Rhea M2 board definition.
+ * FRANK OS M2 board definition.
  *
  * Based on pico2 but uses RP2350B (48 GPIOs) so that GPIO 47 is
  * available for PSRAM QSPI CS1.
@@ -10,8 +10,8 @@
 //       SHOULD ONLY CONSIST OF PREPROCESSOR DIRECTIVES
 // -----------------------------------------------------
 
-#ifndef _BOARDS_RHEA_M2_H
-#define _BOARDS_RHEA_M2_H
+#ifndef _BOARDS_FRANK_M2_H
+#define _BOARDS_FRANK_M2_H
 
 pico_board_cmake_set(PICO_PLATFORM, rp2350)
 

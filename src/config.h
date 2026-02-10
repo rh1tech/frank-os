@@ -1,7 +1,7 @@
 #ifndef DISPHSTX_CONFIG_H
 #define DISPHSTX_CONFIG_H
 
-// DispHSTX configuration for Rhea OS
+// DispHSTX configuration for FRANK OS
 
 #define DISPHSTX_PICOSDK    1       // Use PicoSDK (not PicoLibSDK)
 #define USE_DISPHSTX        1       // Enable HSTX display driver

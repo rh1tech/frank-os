@@ -72,7 +72,7 @@ char __getch(void);
 int __getc(FIL*);
 char getch_now(void);
 
-// MOS2 LED status (stub — no PS/2 LEDs on Rhea)
+// MOS2 LED status (stub — no PS/2 LEDs on FRANK OS)
 uint8_t get_leds_stat(void);
 
 #ifdef __cplusplus

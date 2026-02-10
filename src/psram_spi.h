@@ -1,5 +1,5 @@
 /*
- * psram_spi.h - Stub for Rhea (no PSRAM hardware)
+ * psram_spi.h - Stub for FRANK OS (no PSRAM hardware)
  *
  * Provides function declarations needed by sys_table.c.
  * All functions are implemented as no-ops in psram_stubs.c.

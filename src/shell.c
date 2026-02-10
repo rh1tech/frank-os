@@ -420,7 +420,7 @@ static void shell_task(void *pv) {
         /* Show prompt with current directory */
         char *cd = get_ctx_var(ctx, "CD");
         printf("[shell] prompt cd='%s'\n", cd ? cd : "(null)");
-        terminal_printf(t, "%s> ", cd ? cd : "RHEA");
+        terminal_printf(t, "%s> ", cd ? cd : "FOS");
         printf("[shell] waiting for input...\n");
 
         /* Read a line */

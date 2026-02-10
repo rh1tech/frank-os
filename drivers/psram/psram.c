@@ -1,5 +1,5 @@
 /*
- * PSRAM detection and free-list allocator for Rhea.
+ * PSRAM detection and free-list allocator for FRANK OS.
  *
  * Both detection and the allocator use the UNCACHED XIP window
  * (0x15000000) for all PSRAM access.  Using the cached window

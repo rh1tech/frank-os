@@ -77,7 +77,7 @@ typedef void (*vcu32_fn)(const uint32_t);
 typedef uint8_t* (*dma_handler_impl_fn)(void);
 typedef void (*set_dma_handler_impl_fn)(dma_handler_impl_fn impl);
 
-// VGA driver stubs (Rhea uses HSTX, not VGA — stubs for sys_table compat)
+// VGA driver stubs (FRANK OS uses HSTX, not VGA — stubs for sys_table compat)
 void set_vga_dma_handler_impl(dma_handler_impl_fn impl);
 void set_vga_clkdiv(uint32_t pixel_clock, uint32_t line_size);
 void vga_dma_channel_set_read_addr(const volatile void* addr);

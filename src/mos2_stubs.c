@@ -1,9 +1,9 @@
 /*
- * MOS2 compatibility stubs for Rhea.
+ * MOS2 compatibility stubs for FRANK OS.
  *
- * Provides no-op implementations for MOS2 subsystems that Rhea doesn't have
+ * Provides no-op implementations for MOS2 subsystems that FRANK OS doesn't have
  * (graphics driver, PSRAM, USB mass storage, NES gamepad, etc.) and routes
- * console I/O through the Rhea terminal window.
+ * console I/O through the FRANK OS terminal window.
  *
  * These satisfy the linker for functions referenced in sys_table.c and app.c.
  */
@@ -129,7 +129,7 @@ char getch_now(void) {
         return c;
     }
     /* On MOS2, keyboard scancodes are processed in a PIO ISR that preempts
-     * any task and sets __c.  On Rhea, scancode processing runs in input_task
+     * any task and sets __c.  On FRANK OS, scancode processing runs in input_task
      * (priority 3).  App tasks run at priority 7 and would starve input_task
      * in a busy-wait loop.  Yield for 1 tick so input_task can process keys. */
     vTaskDelay(1);
@@ -173,7 +173,7 @@ int graphics_con_y(void) {
 }
 
 /*==========================================================================
- * Graphics driver — stubs (Rhea uses its own windowing system)
+ * Graphics driver — stubs (FRANK OS uses its own windowing system)
  *=========================================================================*/
 
 static graphics_driver_t *g_driver = NULL;
