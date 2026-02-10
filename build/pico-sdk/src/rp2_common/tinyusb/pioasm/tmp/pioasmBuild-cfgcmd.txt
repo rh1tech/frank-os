@@ -1,1 +1,0 @@
-cmd='/opt/homebrew/bin/cmake;--no-warn-unused-cli;-DCMAKE_MAKE_PROGRAM:FILEPATH=/opt/homebrew/bin/gmake;-DPIOASM_FLAT_INSTALL=1;-DCMAKE_INSTALL_PREFIX=/Users/A2506402/Documents/GitHub/rhea/build/pioasm-install;-DCMAKE_RULE_MESSAGES=OFF;-DCMAKE_INSTALL_MESSAGE=NEVER;-GUnix Makefiles;-C<TMP_DIR>/pioasmBuild-cache-$<CONFIG>.cmake;-S;<SOURCE_DIR><SOURCE_SUBDIR>;-B;<BINARY_DIR>'
