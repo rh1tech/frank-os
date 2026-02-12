@@ -439,14 +439,13 @@ static void draw_window_decorations(hwnd_t hwnd, window_t *win) {
      * sunken client edge and looks wrong in 4-bit color. */
     gfx_vline(f.x + 1, f.y + 1, f.h - 2, THEME_BUTTON_FACE);
 
-    /* Sunken edge around client area */
+    /* Sunken edge around client area (wraps below title bar, enclosing
+     * the menu bar inside — matches real Windows 95 appearance) */
     {
         int sx = f.x + THEME_BORDER_WIDTH - 2;
         int sy = f.y + THEME_BORDER_WIDTH + THEME_TITLE_HEIGHT;
-        if (win->flags & WF_MENUBAR) sy += THEME_MENU_HEIGHT;
         int sw = f.w - 2 * (THEME_BORDER_WIDTH - 2);
         int sh = f.h - THEME_TITLE_HEIGHT - THEME_BORDER_WIDTH - (THEME_BORDER_WIDTH - 2);
-        if (win->flags & WF_MENUBAR) sh -= THEME_MENU_HEIGHT;
         draw_bevel_sunken(sx, sy, sw, sh);
     }
 
@@ -541,6 +540,7 @@ void wm_composite(void) {
     /* Overlay menus — drawn after all windows and taskbar */
     startmenu_draw();
     menu_draw_dropdown();
+    menu_popup_draw();
     sysmenu_draw();
 
     /* Draw drag/resize outline */

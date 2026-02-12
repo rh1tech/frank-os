@@ -84,4 +84,31 @@ void menu_close(void);
  * If found, opens that menu and returns true. */
 bool menu_try_alt_key(hwnd_t hwnd, uint8_t hid_code);
 
+/*==========================================================================
+ * Popup context menu API
+ *=========================================================================*/
+
+/* Show a popup context menu at screen position (sx, sy).
+ * owner receives WM_COMMAND on item selection.
+ * items/count specify the menu items. */
+void menu_popup_show(hwnd_t owner, int16_t sx, int16_t sy,
+                     const menu_item_t *items, uint8_t count);
+
+/* Check if a popup menu is currently open */
+bool menu_popup_is_open(void);
+
+/* Handle mouse event while popup is open.
+ * Returns true if the event was consumed. */
+bool menu_popup_mouse(uint8_t type, int16_t x, int16_t y);
+
+/* Handle keyboard input while popup is open.
+ * Returns true if the key was consumed. */
+bool menu_popup_handle_key(uint8_t hid_code, uint8_t modifiers);
+
+/* Draw the popup menu overlay (call from wm_composite after menu_draw_dropdown) */
+void menu_popup_draw(void);
+
+/* Close any open popup menu */
+void menu_popup_close(void);
+
 #endif /* MENU_H */

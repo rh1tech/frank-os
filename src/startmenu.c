@@ -12,6 +12,7 @@
 #include "window_event.h"
 #include "window_theme.h"
 #include "terminal.h"
+#include "filemanager.h"
 #include "app.h"
 #include "gfx.h"
 #include "font.h"
@@ -172,7 +173,7 @@ static void compute_menu_rect(void) {
 
 static void compute_sub_rect(void) {
     sub_w = 148;
-    sub_h = 4 + (fos_app_count + 1) * SM_ITEM_HEIGHT;
+    sub_h = 4 + (fos_app_count + 2) * SM_ITEM_HEIGHT; /* apps + Navigator + Terminal */
     sub_x = sm_x + sm_w;
     /* Align with the Programs item */
     sub_y = sm_y + 1;
@@ -222,8 +223,11 @@ static void execute_sub_item(int index) {
         wm_set_pending_icon(fos_apps[index].has_icon
                             ? fos_apps[index].icon : default_icon_16x16);
         launch_elf_app(fos_apps[index].path);
+    } else if (index == fos_app_count) {
+        /* FRANK Navigator */
+        spawn_filemanager_window();
     } else {
-        /* Last item is always Terminal */
+        /* Terminal (last item) */
         wm_set_pending_icon(default_icon_16x16);
         spawn_terminal_window();
     }
@@ -297,7 +301,7 @@ void startmenu_draw(void) {
 
     /* Draw Programs submenu if open */
     if (sub_open) {
-        int sub_count = fos_app_count + 1; /* apps + Terminal */
+        int sub_count = fos_app_count + 2; /* apps + Terminal */
         gfx_fill_rect(sub_x, sub_y, sub_w, sub_h, THEME_BUTTON_FACE);
         gfx_hline(sub_x, sub_y, sub_w, COLOR_WHITE);
         gfx_vline(sub_x, sub_y, sub_h, COLOR_WHITE);
@@ -314,12 +318,17 @@ void startmenu_draw(void) {
 
             /* Draw 16x16 icon */
             const uint8_t *icon = default_icon_16x16;
-            if (i < fos_app_count && fos_apps[i].has_icon)
-                icon = fos_apps[i].icon;
+            const char *label;
+            if (i < fos_app_count) {
+                if (fos_apps[i].has_icon) icon = fos_apps[i].icon;
+                label = fos_apps[i].name;
+            } else if (i == fos_app_count) {
+                icon = fn_icon16_open_folder;
+                label = "Navigator";
+            } else {
+                label = "Terminal";
+            }
             gfx_draw_icon_16(sub_x + 4, sy + 4, icon);
-
-            const char *label = (i < fos_app_count)
-                                ? fos_apps[i].name : "Terminal";
             gfx_text_ui(sub_x + 24, sy + (SM_ITEM_HEIGHT - FONT_UI_HEIGHT) / 2,
                         label, fg, bg);
             sy += SM_ITEM_HEIGHT;
@@ -337,7 +346,7 @@ bool startmenu_mouse(uint8_t type, int16_t x, int16_t y) {
     /* Check submenu first */
     if (sub_open && x >= sub_x && x < sub_x + sub_w &&
         y >= sub_y && y < sub_y + sub_h) {
-        int sub_count = fos_app_count + 1;
+        int sub_count = fos_app_count + 2;
         if (type == WM_MOUSEMOVE || type == WM_LBUTTONDOWN) {
             int iy = sub_y + 2;
             sub_hover = -1;
@@ -410,7 +419,7 @@ bool startmenu_handle_key(uint8_t hid_code, uint8_t modifiers) {
     (void)modifiers;
 
     if (sub_open) {
-        int sub_count = fos_app_count + 1;
+        int sub_count = fos_app_count + 2;
         switch (hid_code) {
         case 0x52: /* UP */
             sub_hover--;

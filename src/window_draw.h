@@ -81,4 +81,10 @@ void wd_char_ui(int16_t x, int16_t y, char c, uint8_t fg, uint8_t bg);
 /* Text string using the 6×12 UI font */
 void wd_text_ui(int16_t x, int16_t y, const char *str, uint8_t fg, uint8_t bg);
 
+/* 16x16 icon (auto-clipped to client area) */
+void wd_icon_16(int16_t x, int16_t y, const uint8_t *icon_data);
+
+/* 32x32 icon (auto-clipped to client area) */
+void wd_icon_32(int16_t x, int16_t y, const uint8_t *icon_data);
+
 #endif /* WINDOW_DRAW_H */

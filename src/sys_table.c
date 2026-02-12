@@ -23,6 +23,7 @@
 #include "menu.h"
 #include "dialog.h"
 #include "taskbar.h"
+#include "filemanager.h"
 #include "ff.h"
 #include "hooks.h"
 #include "portable.h"
@@ -580,6 +581,11 @@ unsigned long __in_systable() __aligned(4096) sys_table_ptrs[] = {
     xTaskGenericNotify, // 430
     ulTaskGenericNotifyTake, // 431
     wm_set_pending_icon, // 432
+    wd_icon_32, // 433
+    wd_icon_16, // 434
+    menu_popup_show, // 435
+    dialog_input_show, // 436
+    dialog_input_get_text, // 437
     // TODO:
     0
 };

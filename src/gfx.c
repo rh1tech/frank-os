@@ -252,3 +252,55 @@ void gfx_draw_icon_16(int sx, int sy, const uint8_t *icon_data) {
         }
     }
 }
+
+void gfx_draw_icon_16_clipped(int sx, int sy, const uint8_t *icon_data,
+                               int cx, int cy, int cw, int ch) {
+    int cx1 = cx + cw;
+    int cy1 = cy + ch;
+    for (int row = 0; row < 16; row++) {
+        int py = sy + row;
+        if (py < cy || py >= cy1 || py < 0 || py >= FB_HEIGHT) continue;
+        for (int col = 0; col < 16; col++) {
+            int px = sx + col;
+            if (px < cx || px >= cx1 || px < 0 || px >= DISPLAY_WIDTH) continue;
+            uint8_t c = icon_data[row * 16 + col];
+            if (c != 0xFF)
+                display_set_pixel(px, py, c);
+        }
+    }
+}
+
+/*==========================================================================
+ * 32x32 icon blitter
+ *=========================================================================*/
+
+void gfx_draw_icon_32(int sx, int sy, const uint8_t *icon_data) {
+    for (int row = 0; row < 32; row++) {
+        int py = sy + row;
+        if (py < 0 || py >= FB_HEIGHT) continue;
+        for (int col = 0; col < 32; col++) {
+            int px = sx + col;
+            if (px < 0 || px >= DISPLAY_WIDTH) continue;
+            uint8_t c = icon_data[row * 32 + col];
+            if (c != 0xFF)
+                display_set_pixel(px, py, c);
+        }
+    }
+}
+
+void gfx_draw_icon_32_clipped(int sx, int sy, const uint8_t *icon_data,
+                               int cx, int cy, int cw, int ch) {
+    int cx1 = cx + cw;
+    int cy1 = cy + ch;
+    for (int row = 0; row < 32; row++) {
+        int py = sy + row;
+        if (py < cy || py >= cy1 || py < 0 || py >= FB_HEIGHT) continue;
+        for (int col = 0; col < 32; col++) {
+            int px = sx + col;
+            if (px < cx || px >= cx1 || px < 0 || px >= DISPLAY_WIDTH) continue;
+            uint8_t c = icon_data[row * 32 + col];
+            if (c != 0xFF)
+                display_set_pixel(px, py, c);
+        }
+    }
+}

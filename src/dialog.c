@@ -412,3 +412,309 @@ hwnd_t dialog_show(hwnd_t parent, const char *title, const char *text,
 
     return dlg_hwnd;
 }
+
+/*==========================================================================
+ * Text input dialog
+ *=========================================================================*/
+
+static bool        input_mode;
+static char        input_buf[128];
+static uint8_t     input_len, input_max, input_cursor;
+static const char *input_prompt;
+static bool        inp_field_focus;  /* true = text field focused, false = button */
+
+/* Cached layout values for input dialog */
+static int16_t     inp_field_x, inp_field_y, inp_field_w;
+
+const char *dialog_input_get_text(void) {
+    return input_buf;
+}
+
+static void input_dialog_close(uint16_t result) {
+    input_mode = false;
+    wm_clear_modal();
+    wm_destroy_window(dlg_hwnd);
+    dlg_hwnd = HWND_NULL;
+
+    if (dlg_parent != HWND_NULL) {
+        wm_set_focus(dlg_parent);
+
+        window_event_t ev;
+        memset(&ev, 0, sizeof(ev));
+        ev.type = WM_COMMAND;
+        ev.command.id = result;
+        wm_post_event(dlg_parent, &ev);
+    }
+}
+
+static void input_dialog_paint(hwnd_t hwnd) {
+    window_t *win = wm_get_window(hwnd);
+    if (win) {
+        point_t co = theme_client_origin(&win->frame, win->flags);
+        dlg_screen_ox = co.x;
+        dlg_screen_oy = co.y;
+    }
+
+    /* Prompt label */
+    gfx_text_ui(dlg_screen_ox + 12, dlg_screen_oy + 12,
+                input_prompt, COLOR_BLACK, THEME_BUTTON_FACE);
+
+    /* Sunken text field */
+    int fx = inp_field_x;
+    int fy = inp_field_y;
+    int fw = inp_field_w;
+    int fh = 20;
+
+    /* Sunken border */
+    wd_hline(fx, fy, fw, COLOR_DARK_GRAY);
+    wd_vline(fx, fy, fh, COLOR_DARK_GRAY);
+    wd_hline(fx + 1, fy + 1, fw - 2, COLOR_BLACK);
+    wd_vline(fx + 1, fy + 1, fh - 2, COLOR_BLACK);
+    wd_hline(fx, fy + fh - 1, fw, COLOR_WHITE);
+    wd_vline(fx + fw - 1, fy, fh, COLOR_WHITE);
+    wd_hline(fx + 1, fy + fh - 2, fw - 2, THEME_BUTTON_FACE);
+    wd_vline(fx + fw - 2, fy + 1, fh - 2, THEME_BUTTON_FACE);
+
+    /* White interior */
+    wd_fill_rect(fx + 2, fy + 2, fw - 4, fh - 4, COLOR_WHITE);
+
+    /* Text in field */
+    int tx = dlg_screen_ox + fx + 4;
+    int ty = dlg_screen_oy + fy + (fh - FONT_UI_HEIGHT) / 2;
+    gfx_text_ui(tx, ty, input_buf, COLOR_BLACK, COLOR_WHITE);
+
+    /* Cursor — only visible when text field is focused */
+    if (inp_field_focus) {
+        int cx = tx + input_cursor * FONT_UI_WIDTH;
+        for (int row = 0; row < FONT_UI_HEIGHT; row++)
+            display_set_pixel(cx, ty + row, COLOR_BLACK);
+    }
+
+    /* Separator line */
+    int sep_y = dlg_client_h - DLG_BTN_H - DLG_BTN_BOTTOM - DLG_BTN_TOP_PAD / 2;
+    wd_hline(0, sep_y, dlg_client_w, COLOR_DARK_GRAY);
+    wd_hline(0, sep_y + 1, dlg_client_w, COLOR_WHITE);
+
+    /* OK and Cancel buttons */
+    int total_btn_w = 2 * DLG_BTN_W + DLG_BTN_GAP;
+    int bx = (dlg_client_w - total_btn_w) / 2;
+    int by = dlg_client_h - DLG_BTN_H - DLG_BTN_BOTTOM;
+
+    draw_dialog_button(bx, by, DLG_BTN_W, DLG_BTN_H, "OK",
+                       !inp_field_focus && dlg_btn_focus == 0);
+    draw_dialog_button(bx + DLG_BTN_W + DLG_BTN_GAP, by, DLG_BTN_W,
+                       DLG_BTN_H, "Cancel",
+                       !inp_field_focus && dlg_btn_focus == 1);
+}
+
+static bool input_dialog_event(hwnd_t hwnd, const window_event_t *event) {
+    (void)hwnd;
+
+    switch (event->type) {
+    case WM_CLOSE:
+        input_dialog_close(DLG_RESULT_CANCEL);
+        return true;
+
+    case WM_CHAR: {
+        /* Only accept character input when text field is focused */
+        if (!inp_field_focus) return true;
+        char ch = event->charev.ch;
+        if (ch >= 0x20 && ch < 0x7F && input_len < input_max) {
+            /* Insert character at cursor */
+            for (int i = input_len; i > input_cursor; i--)
+                input_buf[i] = input_buf[i - 1];
+            input_buf[input_cursor] = ch;
+            input_len++;
+            input_cursor++;
+            input_buf[input_len] = '\0';
+            wm_invalidate(dlg_hwnd);
+        }
+        return true;
+    }
+
+    case WM_KEYDOWN:
+        switch (event->key.scancode) {
+        case 0x28: /* Enter */
+            if (inp_field_focus) {
+                /* Enter in text field always submits */
+                input_dialog_close(DLG_RESULT_INPUT);
+            } else {
+                /* Enter on button activates it */
+                input_dialog_close(dlg_btn_focus == 0 ?
+                                   DLG_RESULT_INPUT : DLG_RESULT_CANCEL);
+            }
+            return true;
+        case 0x29: /* Escape */
+            input_dialog_close(DLG_RESULT_CANCEL);
+            return true;
+        case 0x2B: /* Tab — cycle: field(0) → OK(1) → Cancel(2) → field */
+            if (inp_field_focus) {
+                inp_field_focus = false;
+                dlg_btn_focus = 0;  /* OK */
+            } else if (dlg_btn_focus == 0) {
+                dlg_btn_focus = 1;  /* Cancel */
+            } else {
+                inp_field_focus = true;
+            }
+            wm_invalidate(dlg_hwnd);
+            return true;
+        case 0x2A: /* Backspace */
+            if (!inp_field_focus) return true;
+            if (input_cursor > 0) {
+                for (int i = input_cursor - 1; i < input_len - 1; i++)
+                    input_buf[i] = input_buf[i + 1];
+                input_len--;
+                input_cursor--;
+                input_buf[input_len] = '\0';
+                wm_invalidate(dlg_hwnd);
+            }
+            return true;
+        case 0x4C: /* Delete */
+            if (!inp_field_focus) return true;
+            if (input_cursor < input_len) {
+                for (int i = input_cursor; i < input_len - 1; i++)
+                    input_buf[i] = input_buf[i + 1];
+                input_len--;
+                input_buf[input_len] = '\0';
+                wm_invalidate(dlg_hwnd);
+            }
+            return true;
+        case 0x50: /* Left */
+            if (!inp_field_focus) return true;
+            if (input_cursor > 0) {
+                input_cursor--;
+                wm_invalidate(dlg_hwnd);
+            }
+            return true;
+        case 0x4F: /* Right */
+            if (!inp_field_focus) return true;
+            if (input_cursor < input_len) {
+                input_cursor++;
+                wm_invalidate(dlg_hwnd);
+            }
+            return true;
+        case 0x4A: /* Home */
+            if (!inp_field_focus) return true;
+            input_cursor = 0;
+            wm_invalidate(dlg_hwnd);
+            return true;
+        case 0x4D: /* End */
+            if (!inp_field_focus) return true;
+            input_cursor = input_len;
+            wm_invalidate(dlg_hwnd);
+            return true;
+        }
+        return false;
+
+    case WM_LBUTTONDOWN: {
+        /* Hit-test buttons */
+        int total_btn_w = 2 * DLG_BTN_W + DLG_BTN_GAP;
+        int bx = (dlg_client_w - total_btn_w) / 2;
+        int by = dlg_client_h - DLG_BTN_H - DLG_BTN_BOTTOM;
+        int mx = event->mouse.x;
+        int my = event->mouse.y;
+
+        if (my >= by && my < by + DLG_BTN_H) {
+            if (mx >= bx && mx < bx + DLG_BTN_W) {
+                /* OK */
+                input_dialog_close(DLG_RESULT_INPUT);
+                return true;
+            }
+            if (mx >= bx + DLG_BTN_W + DLG_BTN_GAP &&
+                mx < bx + 2 * DLG_BTN_W + DLG_BTN_GAP) {
+                /* Cancel */
+                input_dialog_close(DLG_RESULT_CANCEL);
+                return true;
+            }
+        }
+
+        /* Click on text field — set focus to field and position cursor */
+        if (mx >= inp_field_x + 2 && mx < inp_field_x + inp_field_w - 2 &&
+            my >= inp_field_y && my < inp_field_y + 20) {
+            inp_field_focus = true;
+            int click_x = mx - inp_field_x - 4;
+            int new_pos = click_x / FONT_UI_WIDTH;
+            if (new_pos < 0) new_pos = 0;
+            if (new_pos > input_len) new_pos = input_len;
+            input_cursor = new_pos;
+            wm_invalidate(dlg_hwnd);
+        }
+        return true;
+    }
+
+    default:
+        return false;
+    }
+}
+
+hwnd_t dialog_input_show(hwnd_t parent, const char *title,
+                         const char *prompt, const char *initial,
+                         uint8_t max_len) {
+    if (dlg_hwnd != HWND_NULL) return HWND_NULL;
+
+    dlg_parent = parent;
+    input_mode = true;
+    input_prompt = prompt;
+    input_max = max_len > 127 ? 127 : max_len;
+    inp_field_focus = true;
+
+    /* Initialize input buffer */
+    memset(input_buf, 0, sizeof(input_buf));
+    if (initial) {
+        int len = (int)strlen(initial);
+        if (len > input_max) len = input_max;
+        memcpy(input_buf, initial, len);
+        input_buf[len] = '\0';
+        input_len = len;
+        input_cursor = len;
+    } else {
+        input_len = 0;
+        input_cursor = 0;
+    }
+
+    dlg_btn_count = 2;
+    dlg_btn_focus = 0;
+
+    /* Layout */
+    int prompt_w = (int)strlen(prompt) * FONT_UI_WIDTH + 24;
+    int field_w = input_max * FONT_UI_WIDTH + 12;
+    if (field_w < 200) field_w = 200;
+
+    int client_w = prompt_w > field_w + 24 ? prompt_w : field_w + 24;
+    if (client_w < 250) client_w = 250;
+
+    inp_field_x = 12;
+    inp_field_y = 12 + FONT_UI_HEIGHT + 8;
+    inp_field_w = client_w - 24;
+
+    int client_h = inp_field_y + 20 + DLG_BTN_TOP_PAD + DLG_BTN_H + DLG_BTN_BOTTOM;
+
+    dlg_client_w = client_w;
+    dlg_client_h = client_h;
+
+    int outer_w = client_w + 2 * THEME_BORDER_WIDTH;
+    int outer_h = client_h + THEME_TITLE_HEIGHT + 2 * THEME_BORDER_WIDTH;
+
+    int work_h = taskbar_work_area_height();
+    int x = (DISPLAY_WIDTH - outer_w) / 2;
+    int y = (work_h - outer_h) / 2;
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+
+    dlg_hwnd = wm_create_window((int16_t)x, (int16_t)y,
+                                 (int16_t)outer_w, (int16_t)outer_h,
+                                 title, WSTYLE_DIALOG,
+                                 input_dialog_event, input_dialog_paint);
+    if (dlg_hwnd == HWND_NULL) {
+        input_mode = false;
+        return HWND_NULL;
+    }
+
+    window_t *win = wm_get_window(dlg_hwnd);
+    if (win) win->bg_color = THEME_BUTTON_FACE;
+
+    wm_set_focus(dlg_hwnd);
+    wm_set_modal(dlg_hwnd);
+
+    return dlg_hwnd;
+}

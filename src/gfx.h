@@ -67,4 +67,17 @@ void gfx_text_ui_bold_clipped(int x, int y, const char *str,
  * 0xFF pixels are transparent (skipped). */
 void gfx_draw_icon_16(int sx, int sy, const uint8_t *icon_data);
 
+/* 16x16 icon with clip rectangle — only pixels inside (cx,cy,cw,ch) are drawn */
+void gfx_draw_icon_16_clipped(int sx, int sy, const uint8_t *icon_data,
+                               int cx, int cy, int cw, int ch);
+
+/* Draw a 32x32 icon from raw palette-index data.
+ * icon_data = 1024 bytes (one byte per pixel, row-major).
+ * 0xFF pixels are transparent (skipped). */
+void gfx_draw_icon_32(int sx, int sy, const uint8_t *icon_data);
+
+/* 32x32 icon with clip rectangle */
+void gfx_draw_icon_32_clipped(int sx, int sy, const uint8_t *icon_data,
+                               int cx, int cy, int cw, int ch);
+
 #endif /* GFX_H */

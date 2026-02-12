@@ -30,6 +30,7 @@
 #include "taskbar.h"
 #include "startmenu.h"
 #include "sysmenu.h"
+#include "filemanager.h"
 #include "disphstx.h"
 #include "psram.h"
 #ifdef PSRAM_MAX_FREQ_MHZ
@@ -191,6 +192,15 @@ static void input_task(void *params) {
                 continue;
             }
 
+            /* Win+E: open file manager */
+            if (kev.pressed &&
+                (kev.modifiers & (KBD_MOD_LGUI | KBD_MOD_RGUI)) &&
+                kev.hid_code == 0x08 /* HID_KEY_E */) {
+                spawn_filemanager_window();
+                g_video_dirty = true;
+                continue;
+            }
+
             /* Win key (alone): toggle start menu
              * HID GUI key codes: LGUI=0xE3, RGUI=0xE7 */
             if (kev.pressed &&
@@ -210,6 +220,11 @@ static void input_task(void *params) {
                 }
                 if (sysmenu_is_open() &&
                     sysmenu_handle_key(kev.hid_code, kev.modifiers)) {
+                    g_video_dirty = true;
+                    continue;
+                }
+                if (menu_popup_is_open() &&
+                    menu_popup_handle_key(kev.hid_code, kev.modifiers)) {
                     g_video_dirty = true;
                     continue;
                 }
@@ -422,7 +437,7 @@ int main(void) {
 
     xTaskCreate(usb_service_task, "usb", 256, NULL, configMAX_PRIORITIES - 1, NULL);
     xTaskCreate(heartbeat_task, "heartbeat", 512, NULL, 1, NULL);
-    xTaskCreate(input_task, "input", 512, NULL, 3, NULL);
+    xTaskCreate(input_task, "input", 1024, NULL, 3, NULL);
     xTaskCreate(compositor_task, "compositor", 1024, NULL, 2, NULL);
 
     // xTaskCreate leaves BASEPRI raised (ulCriticalNesting = 0xaaaaaaaa by design).

@@ -212,6 +212,7 @@ static inline void forward_mouse_event(uint8_t type, int16_t x, int16_t y,
     ev.mouse.x = x - co.x;
     ev.mouse.y = y - co.y;
     ev.mouse.buttons = buttons;
+    ev.mouse.modifiers = modifier_state;
     wm_post_event(target, &ev);
 }
 
@@ -336,6 +337,11 @@ void wm_handle_mouse_input(uint8_t type, int16_t x, int16_t y, uint8_t buttons) 
         if (sysmenu_mouse(type, x, y)) return;
     }
 
+    /* Popup context menu */
+    if (menu_popup_is_open()) {
+        if (menu_popup_mouse(type, x, y)) return;
+    }
+
     /* Dropdown menu */
     if (menu_is_open()) {
         if (menu_dropdown_mouse(type, x, y)) return;
@@ -349,6 +355,7 @@ void wm_handle_mouse_input(uint8_t type, int16_t x, int16_t y, uint8_t buttons) 
         if (startmenu_is_open()) startmenu_close();
         if (sysmenu_is_open()) sysmenu_close();
         if (menu_is_open()) menu_close();
+        if (menu_popup_is_open()) menu_popup_close();
     }
 
     /* ---- Left button down: hit-test to decide action ---- */

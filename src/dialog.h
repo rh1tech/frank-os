@@ -40,4 +40,22 @@
 hwnd_t dialog_show(hwnd_t parent, const char *title, const char *text,
                    uint8_t icon, uint8_t buttons);
 
+/* Result ID for input dialog (posted as WM_COMMAND to parent on OK) */
+#define DLG_RESULT_INPUT 0xFF10
+
+/* Show a text input dialog (modal).
+ * parent  - owner window (receives WM_COMMAND with result)
+ * title   - dialog title bar text
+ * prompt  - label text above the input field
+ * initial - initial text in the input field (NULL for empty)
+ * max_len - maximum input length (clamped to 127)
+ * Returns dialog hwnd. */
+hwnd_t dialog_input_show(hwnd_t parent, const char *title,
+                         const char *prompt, const char *initial,
+                         uint8_t max_len);
+
+/* Get the text entered in the most recent input dialog.
+ * Only valid after DLG_RESULT_INPUT is received. */
+const char *dialog_input_get_text(void);
+
 #endif /* DIALOG_H */

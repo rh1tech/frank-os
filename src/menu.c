@@ -438,3 +438,210 @@ bool menu_try_alt_key(hwnd_t hwnd, uint8_t hid_code) {
     }
     return false;
 }
+
+/*==========================================================================
+ * Popup context menu
+ *=========================================================================*/
+
+static hwnd_t      popup_owner   = HWND_NULL;
+static menu_item_t popup_items[MENU_MAX_ITEMS];
+static uint8_t     popup_count;
+static int8_t      popup_hover   = -1;
+static int16_t     popup_x, popup_y, popup_w, popup_h;
+static bool        popup_visible;
+
+void menu_popup_show(hwnd_t owner, int16_t sx, int16_t sy,
+                     const menu_item_t *items, uint8_t count) {
+    /* Close any open dropdown first */
+    if (menu_is_open()) menu_close();
+
+    popup_owner = owner;
+    popup_count = count > MENU_MAX_ITEMS ? MENU_MAX_ITEMS : count;
+    for (int i = 0; i < popup_count; i++)
+        popup_items[i] = items[i];
+    popup_hover = -1;
+
+    /* Calculate popup dimensions */
+    int max_w = MENU_MIN_WIDTH;
+    for (int i = 0; i < popup_count; i++) {
+        int tw = (int)strlen(popup_items[i].text) * FONT_UI_WIDTH +
+                 MENU_PAD_LEFT + MENU_PAD_RIGHT;
+        if (tw > max_w) max_w = tw;
+    }
+    popup_w = max_w;
+
+    popup_h = 4; /* border */
+    for (int i = 0; i < popup_count; i++) {
+        popup_h += (popup_items[i].flags & MIF_SEPARATOR) ?
+                   MENU_SEPARATOR_H : MENU_ITEM_HEIGHT;
+    }
+
+    /* Position: try to fit on screen */
+    popup_x = sx;
+    popup_y = sy;
+    if (popup_x + popup_w + MENU_SHADOW > DISPLAY_WIDTH)
+        popup_x = DISPLAY_WIDTH - popup_w - MENU_SHADOW;
+    if (popup_y + popup_h + MENU_SHADOW > FB_HEIGHT)
+        popup_y = FB_HEIGHT - popup_h - MENU_SHADOW;
+    if (popup_x < 0) popup_x = 0;
+    if (popup_y < 0) popup_y = 0;
+
+    popup_visible = true;
+    wm_mark_dirty();
+}
+
+bool menu_popup_is_open(void) {
+    return popup_visible;
+}
+
+void menu_popup_close(void) {
+    popup_visible = false;
+    popup_owner = HWND_NULL;
+    popup_hover = -1;
+    wm_mark_dirty();
+}
+
+void menu_popup_draw(void) {
+    if (!popup_visible) return;
+
+    /* Drop shadow */
+    gfx_fill_rect(popup_x + MENU_SHADOW, popup_y + MENU_SHADOW,
+                  popup_w, popup_h, COLOR_BLACK);
+
+    /* Background */
+    gfx_fill_rect(popup_x, popup_y, popup_w, popup_h, THEME_BUTTON_FACE);
+
+    /* Raised border */
+    gfx_hline(popup_x, popup_y, popup_w, COLOR_WHITE);
+    gfx_vline(popup_x, popup_y, popup_h, COLOR_WHITE);
+    gfx_hline(popup_x, popup_y + popup_h - 1, popup_w, COLOR_BLACK);
+    gfx_vline(popup_x + popup_w - 1, popup_y, popup_h, COLOR_BLACK);
+    gfx_hline(popup_x + 1, popup_y + popup_h - 2, popup_w - 2, COLOR_DARK_GRAY);
+    gfx_vline(popup_x + popup_w - 2, popup_y + 1, popup_h - 2, COLOR_DARK_GRAY);
+
+    /* Draw items */
+    int iy = popup_y + 2;
+    for (int i = 0; i < popup_count; i++) {
+        menu_item_t *item = &popup_items[i];
+
+        if (item->flags & MIF_SEPARATOR) {
+            int sep_y = iy + MENU_SEPARATOR_H / 2;
+            gfx_hline(popup_x + 2, sep_y - 1, popup_w - 4, COLOR_DARK_GRAY);
+            gfx_hline(popup_x + 2, sep_y, popup_w - 4, COLOR_WHITE);
+            iy += MENU_SEPARATOR_H;
+            continue;
+        }
+
+        bool hovered = (i == popup_hover);
+        uint8_t item_bg = hovered ? COLOR_BLUE : THEME_BUTTON_FACE;
+        uint8_t item_fg = hovered ? COLOR_WHITE : COLOR_BLACK;
+
+        if (item->flags & MIF_DISABLED) {
+            item_fg = COLOR_DARK_GRAY;
+            if (hovered) item_bg = THEME_BUTTON_FACE;
+        }
+
+        gfx_fill_rect(popup_x + 2, iy, popup_w - 4, MENU_ITEM_HEIGHT, item_bg);
+        gfx_text_ui(popup_x + MENU_PAD_LEFT,
+                    iy + (MENU_ITEM_HEIGHT - FONT_UI_HEIGHT) / 2,
+                    item->text, item_fg, item_bg);
+
+        iy += MENU_ITEM_HEIGHT;
+    }
+}
+
+bool menu_popup_mouse(uint8_t type, int16_t x, int16_t y) {
+    if (!popup_visible) return false;
+
+    /* Check if mouse is inside popup */
+    if (x >= popup_x && x < popup_x + popup_w &&
+        y >= popup_y && y < popup_y + popup_h) {
+
+        if (type == WM_MOUSEMOVE || type == WM_LBUTTONDOWN) {
+            int iy = popup_y + 2;
+            int new_hover = -1;
+            for (int i = 0; i < popup_count; i++) {
+                int ih = (popup_items[i].flags & MIF_SEPARATOR) ?
+                         MENU_SEPARATOR_H : MENU_ITEM_HEIGHT;
+                if (y >= iy && y < iy + ih) {
+                    if (!(popup_items[i].flags & (MIF_SEPARATOR | MIF_DISABLED)))
+                        new_hover = i;
+                    break;
+                }
+                iy += ih;
+            }
+            if (new_hover != popup_hover) {
+                popup_hover = new_hover;
+                wm_mark_dirty();
+            }
+        }
+
+        if (type == WM_LBUTTONUP && popup_hover >= 0) {
+            uint16_t cmd = popup_items[popup_hover].command_id;
+            hwnd_t target = popup_owner;
+            menu_popup_close();
+            window_event_t ev;
+            memset(&ev, 0, sizeof(ev));
+            ev.type = WM_COMMAND;
+            ev.command.id = cmd;
+            wm_post_event(target, &ev);
+            wm_mark_dirty();
+        }
+        return true;
+    }
+
+    /* Click outside — close popup */
+    if (type == WM_LBUTTONDOWN || type == WM_RBUTTONDOWN) {
+        menu_popup_close();
+        return false;
+    }
+
+    return false;
+}
+
+bool menu_popup_handle_key(uint8_t hid_code, uint8_t modifiers) {
+    if (!popup_visible) return false;
+    (void)modifiers;
+
+    switch (hid_code) {
+    case 0x52: /* UP */
+        for (int tries = 0; tries < popup_count; tries++) {
+            popup_hover--;
+            if (popup_hover < 0) popup_hover = popup_count - 1;
+            if (!(popup_items[popup_hover].flags & (MIF_SEPARATOR | MIF_DISABLED)))
+                break;
+        }
+        wm_mark_dirty();
+        return true;
+
+    case 0x51: /* DOWN */
+        for (int tries = 0; tries < popup_count; tries++) {
+            popup_hover++;
+            if (popup_hover >= popup_count) popup_hover = 0;
+            if (!(popup_items[popup_hover].flags & (MIF_SEPARATOR | MIF_DISABLED)))
+                break;
+        }
+        wm_mark_dirty();
+        return true;
+
+    case 0x28: /* ENTER */
+        if (popup_hover >= 0) {
+            uint16_t cmd = popup_items[popup_hover].command_id;
+            hwnd_t target = popup_owner;
+            menu_popup_close();
+            window_event_t ev;
+            memset(&ev, 0, sizeof(ev));
+            ev.type = WM_COMMAND;
+            ev.command.id = cmd;
+            wm_post_event(target, &ev);
+            wm_mark_dirty();
+        }
+        return true;
+
+    case 0x29: /* ESCAPE */
+        menu_popup_close();
+        return true;
+    }
+
+    return false;
+}

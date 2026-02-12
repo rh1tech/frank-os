@@ -190,3 +190,15 @@ void wd_text_ui(int16_t x, int16_t y, const char *str, uint8_t fg, uint8_t bg) {
     gfx_text_ui_clipped(draw_ctx.ox + x, draw_ctx.oy + y, str, fg, bg,
                          draw_ctx.ox, draw_ctx.oy, draw_ctx.cw, draw_ctx.ch);
 }
+
+void wd_icon_16(int16_t x, int16_t y, const uint8_t *icon_data) {
+    if (!draw_ctx.active || !icon_data) return;
+    gfx_draw_icon_16_clipped(draw_ctx.ox + x, draw_ctx.oy + y, icon_data,
+                              draw_ctx.ox, draw_ctx.oy, draw_ctx.cw, draw_ctx.ch);
+}
+
+void wd_icon_32(int16_t x, int16_t y, const uint8_t *icon_data) {
+    if (!draw_ctx.active || !icon_data) return;
+    gfx_draw_icon_32_clipped(draw_ctx.ox + x, draw_ctx.oy + y, icon_data,
+                              draw_ctx.ox, draw_ctx.oy, draw_ctx.cw, draw_ctx.ch);
+}
