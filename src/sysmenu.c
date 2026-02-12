@@ -26,7 +26,7 @@
 #define SYS_ITEM_HEIGHT  20
 #define SYS_SEPARATOR_H   8
 #define SYS_MENU_WIDTH   120
-#define SYS_SHADOW         2
+#define SYS_SHADOW         1
 
 typedef struct {
     const char *text;
@@ -146,9 +146,9 @@ static void execute(uint8_t id) {
 void sysmenu_draw(void) {
     if (!sys_open) return;
 
-    /* Shadow */
-    gfx_fill_rect(sys_x + SYS_SHADOW, sys_y + SYS_SHADOW,
-                  sys_w, sys_h, COLOR_BLACK);
+    /* Shadow (dithered for semi-transparency) */
+    gfx_fill_rect_dithered(sys_x + SYS_SHADOW, sys_y + SYS_SHADOW,
+                           sys_w, sys_h, COLOR_BLACK);
 
     /* Background */
     gfx_fill_rect(sys_x, sys_y, sys_w, sys_h, THEME_BUTTON_FACE);

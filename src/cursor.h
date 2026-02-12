@@ -18,6 +18,7 @@ typedef enum {
     CURSOR_RESIZE_EW,   /* horizontal resize ↔ (left/right borders) */
     CURSOR_RESIZE_NWSE, /* diagonal resize ↖↘ (TL/BR corners) */
     CURSOR_RESIZE_NESW, /* diagonal resize ↗↙ (TR/BL corners) */
+    CURSOR_WAIT,        /* hourglass (busy) */
     CURSOR_COUNT
 } cursor_type_t;
 

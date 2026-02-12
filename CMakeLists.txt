@@ -117,8 +117,21 @@ target_compile_options(frankos PRIVATE
     -Wno-implicit-function-declaration
 )
 
+# Read version from version.txt ("major minor" format)
+file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/version.txt" _VERSION_LINE)
+list(GET _VERSION_LINE 0 _VERSION_LINE)
+string(REPLACE " " ";" _VERSION_PARTS "${_VERSION_LINE}")
+list(GET _VERSION_PARTS 0 FRANK_VER_MAJOR)
+list(GET _VERSION_PARTS 1 FRANK_VER_MINOR)
+if(FRANK_VER_MINOR LESS 10)
+    set(FRANK_VERSION_STR "${FRANK_VER_MAJOR}.0${FRANK_VER_MINOR}")
+else()
+    set(FRANK_VERSION_STR "${FRANK_VER_MAJOR}.${FRANK_VER_MINOR}")
+endif()
+
 # MOS2 compile definitions
 target_compile_definitions(frankos PRIVATE
+    FRANK_VERSION_STR="${FRANK_VERSION_STR}"
     FIRMWARE_OFFSET=256
     M_API_VERSION=27
     MIN_API_VERSION=14

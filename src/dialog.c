@@ -16,6 +16,8 @@
 #include "font.h"
 #include "taskbar.h"
 #include <string.h>
+#include "FreeRTOS.h"
+#include "timers.h"
 
 /*==========================================================================
  * Icon data (defined in dialog_icons.c)
@@ -52,6 +54,7 @@ static uint8_t     dlg_btn_count;
 static uint8_t     dlg_btn_focus;
 static uint16_t    dlg_btn_ids[4];
 static const char *dlg_text;
+static int8_t      dlg_btn_pressed = -1;  /* index of mouse-pressed button (-1 = none) */
 
 /* Cached layout values (computed once in dialog_show) */
 static int16_t     dlg_text_x;
@@ -108,28 +111,40 @@ static const char *btn_label(uint16_t result_id) {
 static int dlg_screen_ox, dlg_screen_oy;
 
 static void draw_dialog_button(int16_t x, int16_t y, int16_t w, int16_t h,
-                                const char *label, bool focused) {
-    /* Raised bevel button */
+                                const char *label, bool focused, bool pressed) {
     wd_fill_rect(x, y, w, h, THEME_BUTTON_FACE);
-    /* Outer bevel */
-    wd_hline(x, y, w, COLOR_WHITE);
-    wd_vline(x, y, h, COLOR_WHITE);
-    wd_hline(x, y + h - 1, w, COLOR_BLACK);
-    wd_vline(x + w - 1, y, h, COLOR_BLACK);
-    /* Inner shadow */
-    wd_hline(x + 1, y + h - 2, w - 2, COLOR_DARK_GRAY);
-    wd_vline(x + w - 2, y + 1, h - 2, COLOR_DARK_GRAY);
 
-    /* Center label text using UI font (screen coordinates) */
+    if (pressed) {
+        /* Sunken bevel */
+        wd_hline(x, y, w, COLOR_DARK_GRAY);
+        wd_vline(x, y, h, COLOR_DARK_GRAY);
+        wd_hline(x + 1, y + 1, w - 2, COLOR_BLACK);
+        wd_vline(x + 1, y + 1, h - 2, COLOR_BLACK);
+        wd_hline(x, y + h - 1, w, COLOR_WHITE);
+        wd_vline(x + w - 1, y, h, COLOR_WHITE);
+        wd_hline(x + 1, y + h - 2, w - 2, COLOR_LIGHT_GRAY);
+        wd_vline(x + w - 2, y + 1, h - 2, COLOR_LIGHT_GRAY);
+    } else {
+        /* Raised bevel */
+        wd_hline(x, y, w, COLOR_WHITE);
+        wd_vline(x, y, h, COLOR_WHITE);
+        wd_hline(x, y + h - 1, w, COLOR_BLACK);
+        wd_vline(x + w - 1, y, h, COLOR_BLACK);
+        wd_hline(x + 1, y + h - 2, w - 2, COLOR_DARK_GRAY);
+        wd_vline(x + w - 2, y + 1, h - 2, COLOR_DARK_GRAY);
+    }
+
+    /* Center label text — offset +1 when pressed */
+    int off = pressed ? 1 : 0;
     int text_w = (int)strlen(label) * FONT_UI_WIDTH;
-    int tx = dlg_screen_ox + x + (w - text_w) / 2;
-    int ty = dlg_screen_oy + y + (h - FONT_UI_HEIGHT) / 2;
+    int tx = dlg_screen_ox + x + (w - text_w) / 2 + off;
+    int ty = dlg_screen_oy + y + (h - FONT_UI_HEIGHT) / 2 + off;
     gfx_text_ui(tx, ty, label, COLOR_BLACK, THEME_BUTTON_FACE);
 
-    /* Focus indicator: dotted rectangle 3px inside button */
+    /* Focus indicator: dotted rectangle 3px inside button — offset when pressed */
     if (focused) {
-        int fx = x + 4;
-        int fy = y + 4;
+        int fx = x + 4 + off;
+        int fy = y + 4 + off;
         int fw = w - 8;
         int fh = h - 8;
         for (int i = fx; i < fx + fw; i += 2) {
@@ -206,7 +221,8 @@ static void dialog_paint(hwnd_t hwnd) {
         for (int i = 0; i < dlg_btn_count; i++) {
             draw_dialog_button(bx, by, DLG_BTN_W, DLG_BTN_H,
                                btn_label(dlg_btn_ids[i]),
-                               i == dlg_btn_focus);
+                               i == dlg_btn_focus,
+                               i == dlg_btn_pressed);
             bx += DLG_BTN_W + DLG_BTN_GAP;
         }
     }
@@ -278,7 +294,7 @@ static bool dialog_event(hwnd_t hwnd, const window_event_t *event) {
         return false;
 
     case WM_LBUTTONDOWN: {
-        /* Hit-test buttons */
+        /* Hit-test buttons — capture on press, fire on release */
         int total_btn_w = dlg_btn_count * DLG_BTN_W +
                           (dlg_btn_count - 1) * DLG_BTN_GAP;
         int bx = (dlg_client_w - total_btn_w) / 2;
@@ -286,14 +302,39 @@ static bool dialog_event(hwnd_t hwnd, const window_event_t *event) {
         int mx = event->mouse.x;
         int my = event->mouse.y;
 
+        dlg_btn_pressed = -1;
         if (my >= by && my < by + DLG_BTN_H) {
             for (int i = 0; i < dlg_btn_count; i++) {
                 if (mx >= bx && mx < bx + DLG_BTN_W) {
-                    dialog_close(dlg_btn_ids[i]);
+                    dlg_btn_pressed = i;
+                    dlg_btn_focus = i;
+                    wm_invalidate(dlg_hwnd);
                     return true;
                 }
                 bx += DLG_BTN_W + DLG_BTN_GAP;
             }
+        }
+        return true;
+    }
+
+    case WM_LBUTTONUP: {
+        if (dlg_btn_pressed < 0) return true;
+        int pressed = dlg_btn_pressed;
+        dlg_btn_pressed = -1;
+
+        /* Check if cursor is still over the pressed button */
+        int total_btn_w = dlg_btn_count * DLG_BTN_W +
+                          (dlg_btn_count - 1) * DLG_BTN_GAP;
+        int bx = (dlg_client_w - total_btn_w) / 2 + pressed * (DLG_BTN_W + DLG_BTN_GAP);
+        int by = dlg_client_h - DLG_BTN_H - DLG_BTN_BOTTOM;
+        int mx = event->mouse.x;
+        int my = event->mouse.y;
+
+        if (mx >= bx && mx < bx + DLG_BTN_W &&
+            my >= by && my < by + DLG_BTN_H) {
+            dialog_close(dlg_btn_ids[pressed]);
+        } else {
+            wm_invalidate(dlg_hwnd);
         }
         return true;
     }
@@ -328,6 +369,7 @@ hwnd_t dialog_show(hwnd_t parent, const char *title, const char *text,
         dlg_buttons = DLG_BTN_OK;
     }
     dlg_btn_focus = 0;
+    dlg_btn_pressed = -1;
 
     /* Measure text */
     int max_line_w = 0;
@@ -423,8 +465,24 @@ static uint8_t     input_len, input_max, input_cursor;
 static const char *input_prompt;
 static bool        inp_field_focus;  /* true = text field focused, false = button */
 
+/* Cursor blink state */
+static bool          inp_cursor_visible = true;
+static TimerHandle_t inp_blink_timer    = NULL;
+
 /* Cached layout values for input dialog */
 static int16_t     inp_field_x, inp_field_y, inp_field_w;
+
+static void inp_blink_callback(TimerHandle_t xTimer) {
+    (void)xTimer;
+    inp_cursor_visible = !inp_cursor_visible;
+    wm_invalidate(dlg_hwnd);
+}
+
+static void inp_blink_reset(void) {
+    inp_cursor_visible = true;
+    if (inp_blink_timer) xTimerReset(inp_blink_timer, 0);
+    wm_invalidate(dlg_hwnd);
+}
 
 const char *dialog_input_get_text(void) {
     return input_buf;
@@ -432,6 +490,11 @@ const char *dialog_input_get_text(void) {
 
 static void input_dialog_close(uint16_t result) {
     input_mode = false;
+    if (inp_blink_timer) {
+        xTimerStop(inp_blink_timer, 0);
+        xTimerDelete(inp_blink_timer, 0);
+        inp_blink_timer = NULL;
+    }
     wm_clear_modal();
     wm_destroy_window(dlg_hwnd);
     dlg_hwnd = HWND_NULL;
@@ -483,8 +546,8 @@ static void input_dialog_paint(hwnd_t hwnd) {
     int ty = dlg_screen_oy + fy + (fh - FONT_UI_HEIGHT) / 2;
     gfx_text_ui(tx, ty, input_buf, COLOR_BLACK, COLOR_WHITE);
 
-    /* Cursor — only visible when text field is focused */
-    if (inp_field_focus) {
+    /* Cursor — visible when text field is focused and blink is on */
+    if (inp_field_focus && inp_cursor_visible) {
         int cx = tx + input_cursor * FONT_UI_WIDTH;
         for (int row = 0; row < FONT_UI_HEIGHT; row++)
             display_set_pixel(cx, ty + row, COLOR_BLACK);
@@ -501,10 +564,12 @@ static void input_dialog_paint(hwnd_t hwnd) {
     int by = dlg_client_h - DLG_BTN_H - DLG_BTN_BOTTOM;
 
     draw_dialog_button(bx, by, DLG_BTN_W, DLG_BTN_H, "OK",
-                       !inp_field_focus && dlg_btn_focus == 0);
+                       !inp_field_focus && dlg_btn_focus == 0,
+                       dlg_btn_pressed == 0);
     draw_dialog_button(bx + DLG_BTN_W + DLG_BTN_GAP, by, DLG_BTN_W,
                        DLG_BTN_H, "Cancel",
-                       !inp_field_focus && dlg_btn_focus == 1);
+                       !inp_field_focus && dlg_btn_focus == 1,
+                       dlg_btn_pressed == 1);
 }
 
 static bool input_dialog_event(hwnd_t hwnd, const window_event_t *event) {
@@ -527,7 +592,7 @@ static bool input_dialog_event(hwnd_t hwnd, const window_event_t *event) {
             input_len++;
             input_cursor++;
             input_buf[input_len] = '\0';
-            wm_invalidate(dlg_hwnd);
+            inp_blink_reset();
         }
         return true;
     }
@@ -566,7 +631,7 @@ static bool input_dialog_event(hwnd_t hwnd, const window_event_t *event) {
                 input_len--;
                 input_cursor--;
                 input_buf[input_len] = '\0';
-                wm_invalidate(dlg_hwnd);
+                inp_blink_reset();
             }
             return true;
         case 0x4C: /* Delete */
@@ -576,54 +641,61 @@ static bool input_dialog_event(hwnd_t hwnd, const window_event_t *event) {
                     input_buf[i] = input_buf[i + 1];
                 input_len--;
                 input_buf[input_len] = '\0';
-                wm_invalidate(dlg_hwnd);
+                inp_blink_reset();
             }
             return true;
         case 0x50: /* Left */
             if (!inp_field_focus) return true;
             if (input_cursor > 0) {
                 input_cursor--;
-                wm_invalidate(dlg_hwnd);
+                inp_blink_reset();
             }
             return true;
         case 0x4F: /* Right */
             if (!inp_field_focus) return true;
             if (input_cursor < input_len) {
                 input_cursor++;
-                wm_invalidate(dlg_hwnd);
+                inp_blink_reset();
             }
             return true;
         case 0x4A: /* Home */
             if (!inp_field_focus) return true;
             input_cursor = 0;
-            wm_invalidate(dlg_hwnd);
+            inp_blink_reset();
             return true;
         case 0x4D: /* End */
             if (!inp_field_focus) return true;
             input_cursor = input_len;
-            wm_invalidate(dlg_hwnd);
+            inp_blink_reset();
             return true;
         }
         return false;
 
     case WM_LBUTTONDOWN: {
-        /* Hit-test buttons */
+        /* Hit-test buttons — capture on press */
         int total_btn_w = 2 * DLG_BTN_W + DLG_BTN_GAP;
         int bx = (dlg_client_w - total_btn_w) / 2;
         int by = dlg_client_h - DLG_BTN_H - DLG_BTN_BOTTOM;
         int mx = event->mouse.x;
         int my = event->mouse.y;
 
+        dlg_btn_pressed = -1;
         if (my >= by && my < by + DLG_BTN_H) {
             if (mx >= bx && mx < bx + DLG_BTN_W) {
                 /* OK */
-                input_dialog_close(DLG_RESULT_INPUT);
+                dlg_btn_pressed = 0;
+                inp_field_focus = false;
+                dlg_btn_focus = 0;
+                wm_invalidate(dlg_hwnd);
                 return true;
             }
             if (mx >= bx + DLG_BTN_W + DLG_BTN_GAP &&
                 mx < bx + 2 * DLG_BTN_W + DLG_BTN_GAP) {
                 /* Cancel */
-                input_dialog_close(DLG_RESULT_CANCEL);
+                dlg_btn_pressed = 1;
+                inp_field_focus = false;
+                dlg_btn_focus = 1;
+                wm_invalidate(dlg_hwnd);
                 return true;
             }
         }
@@ -632,11 +704,34 @@ static bool input_dialog_event(hwnd_t hwnd, const window_event_t *event) {
         if (mx >= inp_field_x + 2 && mx < inp_field_x + inp_field_w - 2 &&
             my >= inp_field_y && my < inp_field_y + 20) {
             inp_field_focus = true;
+            dlg_btn_pressed = -1;
             int click_x = mx - inp_field_x - 4;
             int new_pos = click_x / FONT_UI_WIDTH;
             if (new_pos < 0) new_pos = 0;
             if (new_pos > input_len) new_pos = input_len;
             input_cursor = new_pos;
+            inp_blink_reset();
+            wm_invalidate(dlg_hwnd);
+        }
+        return true;
+    }
+
+    case WM_LBUTTONUP: {
+        if (dlg_btn_pressed < 0) return true;
+        int pressed = dlg_btn_pressed;
+        dlg_btn_pressed = -1;
+
+        /* Check if cursor is still over the pressed button */
+        int total_btn_w = 2 * DLG_BTN_W + DLG_BTN_GAP;
+        int bx = (dlg_client_w - total_btn_w) / 2 + pressed * (DLG_BTN_W + DLG_BTN_GAP);
+        int by = dlg_client_h - DLG_BTN_H - DLG_BTN_BOTTOM;
+        int mx = event->mouse.x;
+        int my = event->mouse.y;
+
+        if (mx >= bx && mx < bx + DLG_BTN_W &&
+            my >= by && my < by + DLG_BTN_H) {
+            input_dialog_close(pressed == 0 ? DLG_RESULT_INPUT : DLG_RESULT_CANCEL);
+        } else {
             wm_invalidate(dlg_hwnd);
         }
         return true;
@@ -674,6 +769,7 @@ hwnd_t dialog_input_show(hwnd_t parent, const char *title,
 
     dlg_btn_count = 2;
     dlg_btn_focus = 0;
+    dlg_btn_pressed = -1;
 
     /* Layout */
     int prompt_w = (int)strlen(prompt) * FONT_UI_WIDTH + 24;
@@ -715,6 +811,12 @@ hwnd_t dialog_input_show(hwnd_t parent, const char *title,
 
     wm_set_focus(dlg_hwnd);
     wm_set_modal(dlg_hwnd);
+
+    /* Start cursor blink timer (500ms auto-reload) */
+    inp_cursor_visible = true;
+    inp_blink_timer = xTimerCreate("dblink", pdMS_TO_TICKS(500),
+                                    pdTRUE, NULL, inp_blink_callback);
+    if (inp_blink_timer) xTimerStart(inp_blink_timer, 0);
 
     return dlg_hwnd;
 }

@@ -35,7 +35,7 @@ static int16_t dropdown_x, dropdown_y, dropdown_w, dropdown_h;
 #define MENU_PAD_LEFT      6
 #define MENU_PAD_RIGHT    20
 #define MENU_MIN_WIDTH    80
-#define MENU_SHADOW         2
+#define MENU_SHADOW         1
 
 /*==========================================================================
  * Menu bar data management
@@ -161,10 +161,6 @@ void menu_draw_dropdown(void) {
     menu_bar_t *bar = menu_get(menu_open_hwnd);
     if (!bar) return;
     menu_def_t *md = &bar->menus[menu_open_index];
-
-    /* Drop shadow (2px offset) */
-    gfx_fill_rect(dropdown_x + MENU_SHADOW, dropdown_y + MENU_SHADOW,
-                  dropdown_w, dropdown_h, COLOR_BLACK);
 
     /* Menu background */
     gfx_fill_rect(dropdown_x, dropdown_y, dropdown_w, dropdown_h,
@@ -504,9 +500,9 @@ void menu_popup_close(void) {
 void menu_popup_draw(void) {
     if (!popup_visible) return;
 
-    /* Drop shadow */
-    gfx_fill_rect(popup_x + MENU_SHADOW, popup_y + MENU_SHADOW,
-                  popup_w, popup_h, COLOR_BLACK);
+    /* Drop shadow (dithered for semi-transparency) */
+    gfx_fill_rect_dithered(popup_x + MENU_SHADOW, popup_y + MENU_SHADOW,
+                           popup_w, popup_h, COLOR_BLACK);
 
     /* Background */
     gfx_fill_rect(popup_x, popup_y, popup_w, popup_h, THEME_BUTTON_FACE);

@@ -271,6 +271,14 @@ void wm_mark_dirty(void);
 bool wm_needs_composite(void);
 
 /*==========================================================================
+ * Title bar button press query
+ *=========================================================================*/
+
+/* Returns the pressed title bar button zone (HT_CLOSE, HT_MAXIMIZE,
+ * HT_MINIMIZE) for the given window, or HT_NOWHERE if none. */
+uint8_t wm_get_pressed_titlebar_btn(hwnd_t hwnd);
+
+/*==========================================================================
  * Modal dialog support
  *=========================================================================*/
 

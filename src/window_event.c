@@ -16,6 +16,8 @@
 #include "sysmenu.h"
 #include <string.h>
 #include "hardware/sync.h"
+#include "FreeRTOS.h"
+#include "task.h"
 
 /*==========================================================================
  * Internal state
@@ -69,6 +71,16 @@ static int16_t drag_anchor_y;
 static rect_t  drag_orig;                /* window rect at drag start */
 static rect_t  drag_rect;                /* proposed rect during drag */
 static uint8_t drag_edge;                /* HT_BORDER_* for resize */
+
+/* Title bar button press tracking — press-on-release behavior */
+static hwnd_t  titlebar_btn_hwnd  = HWND_NULL; /* which window's button is captured */
+static uint8_t titlebar_btn_zone  = HT_NOWHERE; /* HT_CLOSE / HT_MAXIMIZE / HT_MINIMIZE */
+static bool    titlebar_btn_shown = false;       /* visually pressed (false when cursor leaves) */
+
+/* Title bar double-click detection */
+#define DBLCLICK_TICKS  pdMS_TO_TICKS(400)
+static uint32_t dblclick_tick = 0;
+static hwnd_t   dblclick_hwnd = HWND_NULL;
 
 void wm_event_init(void) {
     int lock_num = spin_lock_claim_unused(true);
@@ -378,35 +390,37 @@ void wm_handle_mouse_input(uint8_t type, int16_t x, int16_t y, uint8_t buttons) 
         uint8_t zone = theme_hit_test(&win->frame, win->flags, x, y);
 
         switch (zone) {
-            case HT_TITLEBAR:
+            case HT_TITLEBAR: {
+                uint32_t now = xTaskGetTickCount();
+                if (target == dblclick_hwnd &&
+                    (now - dblclick_tick) <= DBLCLICK_TICKS) {
+                    /* Double-click: toggle maximize/restore */
+                    dblclick_hwnd = HWND_NULL;
+                    if (win->flags & WF_RESIZABLE) {
+                        if (win->state == WS_MAXIMIZED)
+                            wm_restore_window(target);
+                        else
+                            wm_maximize_window(target);
+                        compositor_dirty = 1;
+                    }
+                    return;
+                }
+                dblclick_hwnd = target;
+                dblclick_tick = now;
                 if ((win->flags & WF_MOVABLE) && win->state != WS_MAXIMIZED) {
                     begin_drag(target, DRAG_MOVE, 0, x, y);
                 }
                 return;
+            }
 
             case HT_CLOSE:
-                if (win->flags & WF_CLOSABLE) {
-                    window_event_t ev;
-                    memset(&ev, 0, sizeof(ev));
-                    ev.type = WM_CLOSE;
-                    wm_post_event(target, &ev);
-                }
-                return;
-
             case HT_MAXIMIZE:
-                if (win->flags & WF_RESIZABLE) {
-                    if (win->state == WS_MAXIMIZED)
-                        wm_restore_window(target);
-                    else
-                        wm_maximize_window(target);
-                    compositor_dirty = 1;
-                }
-                /* Non-resizable: button is disabled, do nothing */
-                return;
-
             case HT_MINIMIZE:
-                wm_minimize_window(target);
-                compositor_dirty = 1;
+                /* Capture button press — action fires on release */
+                titlebar_btn_hwnd  = target;
+                titlebar_btn_zone  = zone;
+                titlebar_btn_shown = true;
+                wm_invalidate(target);
                 return;
 
             case HT_MENUBAR:
@@ -437,6 +451,46 @@ void wm_handle_mouse_input(uint8_t type, int16_t x, int16_t y, uint8_t buttons) 
 
     /* ---- Left button up (not dragging) ---- */
     if (type == WM_LBUTTONUP) {
+        /* Title bar button release — execute action if still over button */
+        if (titlebar_btn_hwnd != HWND_NULL) {
+            hwnd_t btn_hwnd = titlebar_btn_hwnd;
+            uint8_t btn_zone = titlebar_btn_zone;
+            titlebar_btn_hwnd  = HWND_NULL;
+            titlebar_btn_zone  = HT_NOWHERE;
+            titlebar_btn_shown = false;
+
+            window_t *bwin = wm_get_window(btn_hwnd);
+            if (bwin) {
+                uint8_t zone = theme_hit_test(&bwin->frame, bwin->flags, x, y);
+                if (zone == btn_zone) {
+                    switch (btn_zone) {
+                    case HT_CLOSE:
+                        if (bwin->flags & WF_CLOSABLE) {
+                            window_event_t ev;
+                            memset(&ev, 0, sizeof(ev));
+                            ev.type = WM_CLOSE;
+                            wm_post_event(btn_hwnd, &ev);
+                        }
+                        break;
+                    case HT_MAXIMIZE:
+                        if (bwin->flags & WF_RESIZABLE) {
+                            if (bwin->state == WS_MAXIMIZED)
+                                wm_restore_window(btn_hwnd);
+                            else
+                                wm_maximize_window(btn_hwnd);
+                        }
+                        break;
+                    case HT_MINIMIZE:
+                        wm_minimize_window(btn_hwnd);
+                        break;
+                    }
+                }
+            }
+            wm_invalidate(btn_hwnd);
+            compositor_dirty = 1;
+            return;
+        }
+
         /* Route to overlays first */
         if (startmenu_is_open() && startmenu_mouse(type, x, y)) return;
         if (sysmenu_is_open() && sysmenu_mouse(type, x, y)) return;
@@ -450,6 +504,20 @@ void wm_handle_mouse_input(uint8_t type, int16_t x, int16_t y, uint8_t buttons) 
 
     /* ---- Mouse move (not dragging) ---- */
     if (type == WM_MOUSEMOVE) {
+        /* Track titlebar button capture — toggle visual on/off */
+        if (titlebar_btn_hwnd != HWND_NULL) {
+            window_t *bwin = wm_get_window(titlebar_btn_hwnd);
+            if (bwin) {
+                uint8_t zone = theme_hit_test(&bwin->frame, bwin->flags, x, y);
+                bool over = (zone == titlebar_btn_zone);
+                if (over != titlebar_btn_shown) {
+                    titlebar_btn_shown = over;
+                    wm_invalidate(titlebar_btn_hwnd);
+                }
+            }
+            return;
+        }
+
         /* Route to overlays first for hover tracking */
         if (startmenu_is_open()) startmenu_mouse(type, x, y);
         if (sysmenu_is_open()) sysmenu_mouse(type, x, y);
@@ -474,11 +542,11 @@ void wm_handle_mouse_input(uint8_t type, int16_t x, int16_t y, uint8_t buttons) 
         return;
     }
 
-    /* ---- Right button events: forward to focused window ---- */
+    /* ---- Right button events: forward to window under cursor ---- */
     if (type == WM_RBUTTONDOWN || type == WM_RBUTTONUP) {
-        hwnd_t focus = wm_get_focus();
-        if (focus != HWND_NULL)
-            forward_mouse_event(type, x, y, buttons, focus);
+        hwnd_t target = wm_window_at_point(x, y);
+        if (target != HWND_NULL)
+            forward_mouse_event(type, x, y, buttons, target);
         return;
     }
 }
@@ -487,6 +555,16 @@ bool wm_get_drag_outline(rect_t *outline) {
     if (drag_mode == DRAG_NONE) return false;
     if (outline) *outline = drag_rect;
     return true;
+}
+
+/*==========================================================================
+ * Title bar button press query
+ *=========================================================================*/
+
+uint8_t wm_get_pressed_titlebar_btn(hwnd_t hwnd) {
+    if (titlebar_btn_hwnd == hwnd && titlebar_btn_shown)
+        return titlebar_btn_zone;
+    return HT_NOWHERE;
 }
 
 /*==========================================================================

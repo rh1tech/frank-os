@@ -25,6 +25,11 @@ void gfx_vline(int x, int y, int h, uint8_t color);
 /* Filled rectangle */
 void gfx_fill_rect(int x, int y, int w, int h, uint8_t color);
 
+/* Filled rectangle with checkerboard dithering (50% coverage).
+ * Draws color on every other pixel, leaving the rest untouched.
+ * Used for semi-transparent shadows. */
+void gfx_fill_rect_dithered(int x, int y, int w, int h, uint8_t color);
+
 /* Outline rectangle (1px border) */
 void gfx_rect(int x, int y, int w, int h, uint8_t color);
 

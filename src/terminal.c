@@ -249,7 +249,7 @@ static bool terminal_event(hwnd_t hwnd, const window_event_t *event) {
             return true;
         case TCMD_HELP_ABOUT:
             dialog_show(hwnd, "About",
-                        "FRANK OS\n\nVersion 1.00\n"
+                        "FRANK OS\n\nVersion " FRANK_VERSION_STR "\n"
                         "Copyright (c) 2026 Mikhail Matveev\n"
                         "rh1.tech",
                         DLG_ICON_INFO, DLG_BTN_OK);

@@ -40,8 +40,21 @@ target_compile_options(${PROJECT_NAME} PUBLIC
 )
 endif()
 
+# Read version from version.txt ("major minor" format)
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/../../../version.txt" _VERSION_LINE)
+list(GET _VERSION_LINE 0 _VERSION_LINE)
+string(REPLACE " " ";" _VERSION_PARTS "${_VERSION_LINE}")
+list(GET _VERSION_PARTS 0 FRANK_VER_MAJOR)
+list(GET _VERSION_PARTS 1 FRANK_VER_MINOR)
+if(FRANK_VER_MINOR LESS 10)
+    set(FRANK_VERSION_STR "${FRANK_VER_MAJOR}.0${FRANK_VER_MINOR}")
+else()
+    set(FRANK_VERSION_STR "${FRANK_VER_MAJOR}.${FRANK_VER_MINOR}")
+endif()
+
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     configSTACK_DEPTH_TYPE=uint32_t
+    FRANK_VERSION_STR="${FRANK_VERSION_STR}"
 )
 
 pico_enable_stdio_uart(${PROJECT_NAME} 0)

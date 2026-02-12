@@ -34,6 +34,20 @@ void gfx_fill_rect(int x, int y, int w, int h, uint8_t color) {
         display_hline_fast(x, row, cw, color);
 }
 
+void gfx_fill_rect_dithered(int x, int y, int w, int h, uint8_t color) {
+    int x1 = x + w;
+    int y1 = y + h;
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x1 > DISPLAY_WIDTH) x1 = DISPLAY_WIDTH;
+    if (y1 > FB_HEIGHT) y1 = FB_HEIGHT;
+    if (x >= x1 || y >= y1) return;
+    for (int row = y; row < y1; row++)
+        for (int col = x; col < x1; col++)
+            if ((row + col) & 1)
+                display_set_pixel(col, row, color);
+}
+
 void gfx_rect(int x, int y, int w, int h, uint8_t color) {
     gfx_hline(x, y, w, color);
     gfx_hline(x, y + h - 1, w, color);

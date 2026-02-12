@@ -31,6 +31,7 @@
 #include "startmenu.h"
 #include "sysmenu.h"
 #include "filemanager.h"
+#include "cursor.h"
 #include "disphstx.h"
 #include "psram.h"
 #ifdef PSRAM_MAX_FREQ_MHZ
@@ -135,7 +136,19 @@ static void heartbeat_task(void *params) {
 static void compositor_task(void *params) {
     (void)params;
 
+    /* Clear startup hourglass and show taskbar after 500ms */
+    TickType_t boot_deadline = xTaskGetTickCount() + pdMS_TO_TICKS(500);
+    bool boot_cursor_active = true;
+
     for (;;) {
+        /* End boot sequence: show taskbar and restore arrow cursor */
+        if (boot_cursor_active && xTaskGetTickCount() >= boot_deadline) {
+            boot_cursor_active = false;
+            taskbar_init();
+            cursor_set_type(CURSOR_ARROW);
+            wm_mark_dirty();
+        }
+
         /* Recomposite when input arrives OR when windows are
          * invalidated (e.g. terminal output, cursor blink). */
         if (g_video_dirty || wm_needs_composite()) {
@@ -428,11 +441,10 @@ int main(void) {
     DispHstxCore1Exec(multicore_lockout_victim_init);
     DispHstxCore1Wait();
 
-    /* Initialize taskbar — clean desktop on boot, no auto-terminal */
-    taskbar_init();
-    printf("Taskbar initialized\n"); stdio_flush();
+    /* Show hourglass cursor during startup — taskbar appears after delay */
+    cursor_set_type(CURSOR_WAIT);
 
-    /* One-shot composite so the first frame (desktop + taskbar) is visible */
+    /* One-shot composite: desktop + hourglass, no taskbar yet */
     wm_composite();
 
     xTaskCreate(usb_service_task, "usb", 256, NULL, configMAX_PRIORITIES - 1, NULL);

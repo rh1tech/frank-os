@@ -840,7 +840,8 @@ static bool ms_event(hwnd_t hwnd, const window_event_t *ev) {
         }
         if (ev->command.id == CMD_ABOUT) {
             dialog_show(hwnd, "About Minesweeper",
-                        "Minesweeper\n\nFRANK OS (c) 2025\nMikhail Matveev",
+                        "Minesweeper\n\nFRANK OS v" FRANK_VERSION_STR
+                        " (c) 2026\nMikhail Matveev",
                         DLG_ICON_INFO, DLG_BTN_OK);
             return true;
         }

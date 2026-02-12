@@ -18,6 +18,7 @@
 #include "display.h"
 #include "taskbar.h"
 #include "app.h"
+#include "cursor.h"
 #include "ff.h"
 #include "sdcard_init.h"
 #include "FreeRTOS.h"
@@ -614,45 +615,17 @@ static void fm_paint_scrollbar(filemanager_t *fm, int16_t cw, int16_t ch) {
 static void fm_paint_statusbar(filemanager_t *fm, int16_t cw, int16_t ch) {
     int16_t sy = ch - FN_STATUSBAR_H;
 
-    /* Background and sunken bevel */
+    /* Background */
     wd_fill_rect(0, sy, cw, FN_STATUSBAR_H, THEME_BUTTON_FACE);
-    /* Top edge: sunken look */
+    /* Top groove separator */
     wd_hline(0, sy, cw, COLOR_DARK_GRAY);
     wd_hline(0, sy + 1, cw, COLOR_WHITE);
 
-    /* File count and total size */
-    uint32_t total_size = 0;
-    uint16_t file_count = 0;
-    for (int i = 0; i < (int)fm->entry_count; i++) {
-        if (!(fm->entries[i].attrib & AM_DIR)) {
-            file_count++;
-            total_size += fm->entries[i].size;
-        }
-    }
+    int panel_y = sy + 3;
+    int panel_h = FN_STATUSBAR_H - 6;            /* 14 px */
+    int text_y  = sy + (FN_STATUSBAR_H - FONT_UI_HEIGHT) / 2;
 
-    /* Format: "XX file(s)  XX.X KB" */
-    char left[48];
-    if (total_size < 1024)
-        snprintf(left, sizeof(left), "%u file(s)  %lu B",
-                 file_count, (unsigned long)total_size);
-    else if (total_size < 1024UL * 1024)
-        snprintf(left, sizeof(left), "%u file(s)  %lu KB",
-                 file_count, (unsigned long)(total_size / 1024));
-    else
-        snprintf(left, sizeof(left), "%u file(s)  %lu MB",
-                 file_count, (unsigned long)(total_size / (1024UL * 1024)));
-
-    /* Sunken panel for file info */
-    int panel_w = (int)strlen(left) * FONT_UI_WIDTH + 8;
-    if (panel_w > cw / 2) panel_w = cw / 2;
-    wd_hline(4, sy + 3, panel_w, COLOR_DARK_GRAY);
-    wd_vline(4, sy + 3, FN_STATUSBAR_H - 6, COLOR_DARK_GRAY);
-    wd_hline(4, sy + FN_STATUSBAR_H - 4, panel_w, COLOR_WHITE);
-    wd_vline(4 + panel_w, sy + 3, FN_STATUSBAR_H - 6, COLOR_WHITE);
-    wd_text_ui(8, sy + (FN_STATUSBAR_H - FONT_UI_HEIGHT) / 2,
-               left, COLOR_BLACK, THEME_BUTTON_FACE);
-
-    /* Free space on SD card */
+    /* ---- Right panel: free disk space (fixed width) ---- */
     DWORD free_clust = 0;
     FATFS *fs = NULL;
     char right[32];
@@ -661,23 +634,35 @@ static void fm_paint_statusbar(filemanager_t *fm, int16_t cw, int16_t ch) {
         uint32_t free_bytes = (uint32_t)(free_clust * fs->csize) * 512;
         uint32_t free_kb = free_bytes / 1024;
         if (free_kb < 1024)
-            snprintf(right, sizeof(right), "%lu KB free", (unsigned long)free_kb);
+            snprintf(right, sizeof(right), "%luKB free", (unsigned long)free_kb);
         else
-            snprintf(right, sizeof(right), "%lu MB free",
+            snprintf(right, sizeof(right), "%luMB free",
                      (unsigned long)(free_kb / 1024));
     }
 
+    int rp_w = 0, rp_x = 0;
     if (right[0]) {
-        int rw = (int)strlen(right) * FONT_UI_WIDTH + 8;
-        int rx = cw - rw - 4;
-        if (rx < panel_w + 12) rx = panel_w + 12;
-        wd_hline(rx, sy + 3, rw, COLOR_DARK_GRAY);
-        wd_vline(rx, sy + 3, FN_STATUSBAR_H - 6, COLOR_DARK_GRAY);
-        wd_hline(rx, sy + FN_STATUSBAR_H - 4, rw, COLOR_WHITE);
-        wd_vline(rx + rw, sy + 3, FN_STATUSBAR_H - 6, COLOR_WHITE);
-        wd_text_ui(rx + 4, sy + (FN_STATUSBAR_H - FONT_UI_HEIGHT) / 2,
-                   right, COLOR_BLACK, THEME_BUTTON_FACE);
+        rp_w = (int)strlen(right) * FONT_UI_WIDTH + 8;
+        rp_x = cw - rp_w - 2;
+        wd_hline(rp_x, panel_y, rp_w, COLOR_DARK_GRAY);
+        wd_vline(rp_x, panel_y, panel_h, COLOR_DARK_GRAY);
+        wd_hline(rp_x, panel_y + panel_h - 1, rp_w, COLOR_WHITE);
+        wd_vline(rp_x + rp_w, panel_y, panel_h, COLOR_WHITE);
+        wd_text_ui(rp_x + 4, text_y, right, COLOR_BLACK, THEME_BUTTON_FACE);
     }
+
+    /* ---- Left panel: object count (stretchy — fills remaining width) ---- */
+    char left[48];
+    snprintf(left, sizeof(left), "%u object(s)", (unsigned)fm->entry_count);
+
+    int lp_x = 2;
+    int lp_w = (rp_w > 0) ? (rp_x - lp_x - 2) : (cw - lp_x - 2);
+    wd_hline(lp_x, panel_y, lp_w, COLOR_DARK_GRAY);
+    wd_vline(lp_x, panel_y, panel_h, COLOR_DARK_GRAY);
+    wd_hline(lp_x, panel_y + panel_h - 1, lp_w, COLOR_WHITE);
+    wd_vline(lp_x + lp_w, panel_y, panel_h, COLOR_WHITE);
+    wd_text_ui(lp_x + 4, text_y, left, COLOR_BLACK, THEME_BUTTON_FACE);
+
 }
 
 /*==========================================================================
@@ -1015,6 +1000,10 @@ static void fm_do_delete(filemanager_t *fm) {
     /* Count selected items */
     for (int i = 0; i < (int)fm->entry_count; i++)
         if (fm->entries[i].sel_flags & FN_SEL_SELECTED) total++;
+
+    cursor_set_type(CURSOR_WAIT);
+    wm_mark_dirty();
+
     copy_total_files = 0;  /* clear so progress doesn't show file counts */
     copy_done_files = 0;
     if (total > 1)
@@ -1037,6 +1026,7 @@ static void fm_do_delete(filemanager_t *fm) {
         if (total > 1)
             fm_show_progress("Deleting", done * 100 / total);
     }
+    cursor_set_type(CURSOR_ARROW);
     fm_refresh(fm);
     wm_invalidate(fm->hwnd);
 }
@@ -1270,6 +1260,9 @@ static void fm_copy_recursive(const char *src, const char *dst) {
 static void fm_clip_paste(filemanager_t *fm) {
     if (fn_clipboard.count == 0) return;
 
+    cursor_set_type(CURSOR_WAIT);
+    wm_mark_dirty();
+
     if (!fn_clipboard.is_cut) {
         /* Pre-scan total size and file count for progress display */
         copy_total_bytes = 0;
@@ -1305,6 +1298,7 @@ static void fm_clip_paste(filemanager_t *fm) {
     if (fn_clipboard.is_cut)
         fn_clipboard.count = 0;
 
+    cursor_set_type(CURSOR_ARROW);
     fm_refresh(fm);
     wm_invalidate(fm->hwnd);
 }
@@ -1713,6 +1707,12 @@ static bool fm_event(hwnd_t hwnd, const window_event_t *event) {
     case WM_RBUTTONDOWN: {
         int16_t mx = event->mouse.x;
         int16_t my = event->mouse.y;
+
+        /* Only show context menu in the file list area */
+        if (my < FN_HEADER_HEIGHT || my >= ch - FN_STATUSBAR_H ||
+            mx >= cw - FN_SCROLLBAR_W)
+            return true;
+
         int16_t idx = fm_hit_test(fm, mx, my, cw);
 
         if (idx >= 0 && !(fm->entries[idx].sel_flags & FN_SEL_SELECTED)) {
@@ -1906,6 +1906,15 @@ static bool fm_event(hwnd_t hwnd, const window_event_t *event) {
             if (fm->focus_index >= 0)
                 fm_open_item(fm, fm->focus_index);
             return true;
+
+        /* Help menu */
+        case FN_CMD_ABOUT:
+            dialog_show(hwnd, "About Navigator",
+                        "FRANK Navigator\n\nFRANK OS v" FRANK_VERSION_STR
+                        "\nCopyright (c) 2026 Mikhail Matveev\n"
+                        "rh1.tech",
+                        DLG_ICON_INFO, DLG_BTN_OK);
+            return true;
         }
         return false;
     }
@@ -1970,7 +1979,7 @@ hwnd_t filemanager_create(const char *initial_path) {
     menu_bar_t *bar = (menu_bar_t *)pvPortMalloc(sizeof(menu_bar_t));
     if (bar) {
         memset(bar, 0, sizeof(*bar));
-        bar->menu_count = 3;
+        bar->menu_count = 4;
 
         /* File menu */
         strncpy(bar->menus[0].title, "File", sizeof(bar->menus[0].title));
@@ -2014,6 +2023,13 @@ hwnd_t filemanager_create(const char *initial_path) {
         bar->menus[2].items[3].flags = MIF_SEPARATOR;
         strncpy(bar->menus[2].items[4].text, "Refresh", 20);
         bar->menus[2].items[4].command_id = FN_CMD_REFRESH;
+
+        /* Help menu */
+        strncpy(bar->menus[3].title, "Help", sizeof(bar->menus[3].title));
+        bar->menus[3].accel_key = 0x0B; /* HID H */
+        bar->menus[3].item_count = 1;
+        strncpy(bar->menus[3].items[0].text, "About", 20);
+        bar->menus[3].items[0].command_id = FN_CMD_ABOUT;
 
         menu_set(fm->hwnd, bar);
         vPortFree(bar);

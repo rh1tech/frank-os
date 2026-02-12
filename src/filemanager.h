@@ -66,6 +66,9 @@
 #define FN_CMD_LIST           303
 #define FN_CMD_REFRESH        304
 
+/*  Help menu  */
+#define FN_CMD_ABOUT         601
+
 /*  Navigation  */
 #define FN_CMD_BACK          401
 #define FN_CMD_UP            402

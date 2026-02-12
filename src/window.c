@@ -364,7 +364,7 @@ static void draw_close_glyph(const rect_t *btn, bool pressed) {
     int ox = pressed ? 1 : 0;
     int oy = pressed ? 1 : 0;
     int cx = btn->x + btn->w / 2 - 1 + ox;
-    int cy = btn->y + btn->h / 2 + oy;
+    int cy = btn->y + (btn->h - 1) / 2 + oy;
     for (int d = -3; d <= 3; d++) {
         display_set_pixel(cx + d, cy + d, COLOR_BLACK);
         display_set_pixel(cx + d, cy - d, COLOR_BLACK);
@@ -390,8 +390,8 @@ static void draw_restore_glyph(const rect_t *btn, bool pressed) {
     int oy = pressed ? 1 : 0;
     int bx = btn->x + 3 + ox;
     int by = btn->y + 2 + oy;
-    int bw = btn->w - 7;
-    int bh = btn->h - 5;
+    int bw = btn->w - 8;
+    int bh = btn->h - 7;
     /* Back (upper-right) rectangle */
     gfx_rect(bx + 2, by, bw, bh, COLOR_BLACK);
     gfx_hline(bx + 2, by + 1, bw, COLOR_BLACK);
@@ -439,13 +439,17 @@ static void draw_window_decorations(hwnd_t hwnd, window_t *win) {
      * sunken client edge and looks wrong in 4-bit color. */
     gfx_vline(f.x + 1, f.y + 1, f.h - 2, THEME_BUTTON_FACE);
 
-    /* Sunken edge around client area (wraps below title bar, enclosing
-     * the menu bar inside — matches real Windows 95 appearance) */
+    /* Sunken edge around client area — in real Win95 this sits BELOW the
+     * menu bar; the menu bar is part of the non-client chrome above it. */
     {
         int sx = f.x + THEME_BORDER_WIDTH - 2;
         int sy = f.y + THEME_BORDER_WIDTH + THEME_TITLE_HEIGHT;
         int sw = f.w - 2 * (THEME_BORDER_WIDTH - 2);
         int sh = f.h - THEME_TITLE_HEIGHT - THEME_BORDER_WIDTH - (THEME_BORDER_WIDTH - 2);
+        if (win->flags & WF_MENUBAR) {
+            sy += THEME_MENU_HEIGHT;
+            sh -= THEME_MENU_HEIGHT;
+        }
         draw_bevel_sunken(sx, sy, sw, sh);
     }
 
@@ -475,23 +479,28 @@ static void draw_window_decorations(hwnd_t hwnd, window_t *win) {
 
     /* Title bar buttons — all closable windows get close + maximize + minimize */
     if (win->flags & WF_CLOSABLE) {
+        uint8_t pressed_btn = wm_get_pressed_titlebar_btn(hwnd);
+
         rect_t cb = theme_close_btn_rect(&f);
-        draw_button(cb.x, cb.y, cb.w, cb.h, false);
-        draw_close_glyph(&cb, false);
+        bool close_pressed = (pressed_btn == HT_CLOSE);
+        draw_button(cb.x, cb.y, cb.w, cb.h, close_pressed);
+        draw_close_glyph(&cb, close_pressed);
 
         rect_t mb = theme_max_btn_rect(&f);
-        draw_button(mb.x, mb.y, mb.w, mb.h, false);
+        bool max_pressed = (pressed_btn == HT_MAXIMIZE);
+        draw_button(mb.x, mb.y, mb.w, mb.h, max_pressed);
         if (win->state == WS_MAXIMIZED) {
-            draw_restore_glyph(&mb, false);
+            draw_restore_glyph(&mb, max_pressed);
         } else {
             uint8_t glyph_color = (win->flags & WF_RESIZABLE) ?
                                    COLOR_BLACK : COLOR_DARK_GRAY;
-            draw_maximize_glyph(&mb, false, glyph_color);
+            draw_maximize_glyph(&mb, max_pressed, glyph_color);
         }
 
         rect_t nb = theme_min_btn_rect(&f);
-        draw_button(nb.x, nb.y, nb.w, nb.h, false);
-        draw_minimize_glyph(&nb, false);
+        bool min_pressed = (pressed_btn == HT_MINIMIZE);
+        draw_button(nb.x, nb.y, nb.w, nb.h, min_pressed);
+        draw_minimize_glyph(&nb, min_pressed);
     }
 
     /* Menu bar (drawn by menu system if WF_MENUBAR is set) */
@@ -500,6 +509,12 @@ static void draw_window_decorations(hwnd_t hwnd, window_t *win) {
         int mb_y = f.y + THEME_BORDER_WIDTH + THEME_TITLE_HEIGHT;
         int mb_w = f.w - 2 * THEME_BORDER_WIDTH;
         menu_draw_bar(hwnd, mb_x, mb_y, mb_w);
+
+        /* Raised bottom edge of menu bar — Win95 draws a highlight line
+         * here that separates the menu bar from the client area below. */
+        int sep_x = f.x + THEME_BORDER_WIDTH - 2;
+        int sep_w = f.w - 2 * (THEME_BORDER_WIDTH - 2);
+        gfx_hline(sep_x, mb_y + THEME_MENU_HEIGHT - 1, sep_w, COLOR_WHITE);
     }
 
     /* Client area background */

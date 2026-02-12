@@ -34,7 +34,7 @@
 #define SM_SEPARATOR_H   8
 #define SM_PAD_LEFT     28   /* room for icon column */
 #define SM_MENU_WIDTH  160
-#define SM_SHADOW         2
+#define SM_SHADOW         1
 
 typedef struct {
     const char *text;
