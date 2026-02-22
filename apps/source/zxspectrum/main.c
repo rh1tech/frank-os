@@ -179,6 +179,61 @@ static void load_tap_file(const char *path);
 #define CLIENT_H  (192 + 2 * BORDER_V)   /* 240 */
 
 /* ======================================================================
+ * 16×16 icon — blue screen with cursor + rainbow stripe
+ *
+ *   ┌──────────────┐
+ *   │ ■■           │  blue screen, white "K" cursor
+ *   │ ■■           │
+ *   │              │
+ *   └──────────────┘
+ *       ┃      ┃      stand
+ *   ══════════════════ rainbow (R Y G C B M)
+ * ====================================================================== */
+
+#define _  0xFF  /* transparent */
+#define K  0x00  /* black */
+#define B  0x01  /* blue */
+#define W  0x0F  /* white */
+#define G  0x08  /* dark gray */
+#define R  0x0C  /* light red */
+#define Y  0x0E  /* yellow */
+#define gn 0x0A  /* light green */
+#define cy 0x0B  /* light cyan */
+#define lb 0x09  /* light blue */
+#define mg 0x0D  /* light magenta */
+
+static const uint8_t zx_icon_16x16[256] = {
+    _, _, K, K, K, K, K, K, K, K, K, K, K, K, _, _,
+    _, K, B, B, B, B, B, B, B, B, B, B, B, B, K, _,
+    _, K, B, B, B, B, B, B, B, B, B, B, B, B, K, _,
+    _, K, B, W, W, B, B, B, B, B, B, B, B, B, K, _,
+    _, K, B, W, W, B, B, B, B, B, B, B, B, B, K, _,
+    _, K, B, B, B, B, B, B, B, B, B, B, B, B, K, _,
+    _, K, B, B, B, B, B, B, B, B, B, B, B, B, K, _,
+    _, K, B, B, B, B, B, B, B, B, B, B, B, B, K, _,
+    _, K, K, K, K, K, K, K, K, K, K, K, K, K, K, _,
+    _, _, _, _, _, G, G, G, G, G, G, _, _, _, _, _,
+    _, _, G, G, G, G, G, G, G, G, G, G, G, G, _, _,
+    _, _, R, R, Y, Y,gn,gn,cy,cy,lb,lb,mg,mg, _, _,
+    _, _, R, R, Y, Y,gn,gn,cy,cy,lb,lb,mg,mg, _, _,
+    _, _, G, G, G, G, G, G, G, G, G, G, G, G, _, _,
+    _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _,
+    _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _,
+};
+
+#undef _
+#undef K
+#undef B
+#undef W
+#undef G
+#undef R
+#undef Y
+#undef gn
+#undef cy
+#undef lb
+#undef mg
+
+/* ======================================================================
  * Colour mapping:  ZX 16-colour → CGA 16-colour
  * ====================================================================== */
 
@@ -408,6 +463,9 @@ int main(int argc, char **argv) {
     int16_t x  = (DISPLAY_WIDTH  - fw) / 2;
     int16_t y  = (DISPLAY_HEIGHT - TASKBAR_HEIGHT - fh) / 2;
     if (y < 0) y = 0;
+
+    /* Set icon before window creation — wm_create_window picks it up */
+    ((void(*)(const uint8_t*))_sys_table_ptrs[432])(zx_icon_16x16);
 
     G->app_hwnd = wm_create_window(x, y, fw, fh, "ZX Spectrum",
                                     WSTYLE_DIALOG | WF_MENUBAR,
