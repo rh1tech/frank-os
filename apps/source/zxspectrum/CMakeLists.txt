@@ -69,27 +69,11 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 pico_enable_stdio_uart(${PROJECT_NAME} 0)
 pico_enable_stdio_usb(${PROJECT_NAME} 0)
 
-set(ICON_ICO "${CMAKE_CURRENT_SOURCE_DIR}/../../../assets/icons/w95_1.ico")
-set(CONVERT_ICO_16 "${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/convert_ico_16.py")
-
-add_custom_command(
-    OUTPUT "${CMAKE_BINARY_DIR}/zxspectrum.inf"
-    COMMAND ${Python3_EXECUTABLE} "${CONVERT_ICO_16}"
-        --inf "ZX Spectrum" "${ICON_ICO}"
-        "${CMAKE_BINARY_DIR}/zxspectrum.inf"
-    DEPENDS "${CONVERT_ICO_16}" "${ICON_ICO}"
-    COMMENT "Generating zxspectrum.inf with embedded icon"
-)
-add_custom_target(zxspectrum_inf ALL
-    DEPENDS "${CMAKE_BINARY_DIR}/zxspectrum.inf"
-)
-add_dependencies(${PROJECT_NAME} zxspectrum_inf)
-
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         $<TARGET_FILE:${PROJECT_NAME}>
         ${COMPILED_DIR}/zxspectrum
     COMMAND ${CMAKE_COMMAND} -E copy
-        "${CMAKE_BINARY_DIR}/zxspectrum.inf"
+        "${CMAKE_CURRENT_SOURCE_DIR}/zxspectrum.inf"
         ${COMPILED_DIR}/zxspectrum.inf
 )
