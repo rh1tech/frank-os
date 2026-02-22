@@ -469,6 +469,8 @@ static void shell_task(void *pv) {
     printf("[shell] shell task exiting, cleaning up %s\n", tmpdir);
     rm_rf(tmpdir);
     terminal_destroy(t);
+    /* Free the shell's cmd_ctx_t (env vars, pids entry, struct itself) */
+    remove_ctx(ctx);
     vTaskDelete(NULL);
 }
 
