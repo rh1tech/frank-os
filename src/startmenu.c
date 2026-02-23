@@ -176,8 +176,12 @@ static void compute_sub_rect(void) {
     sub_w = 148;
     sub_h = 4 + (fos_app_count + 2) * SM_ITEM_HEIGHT; /* apps + Navigator + Terminal */
     sub_x = sm_x + sm_w;
-    /* Align with the Programs item */
+    /* Align with the Programs item, but move up if it won't fit */
     sub_y = sm_y + 1;
+    if (sub_y + sub_h > TASKBAR_Y)
+        sub_y = TASKBAR_Y - sub_h;
+    if (sub_y < 0)
+        sub_y = 0;
 }
 
 /*==========================================================================

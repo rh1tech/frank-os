@@ -74,12 +74,10 @@ typedef struct {
     int scanline_counter;
     int scanline_y;
 
-#define AUDIOBUF_LEN 256
     int beeper_state;
-    uint32_t audiobuf[AUDIOBUF_LEN];
-    uint32_t audiobuf_byte;
-    uint32_t audiobuf_bit;
-    volatile uint32_t audiobuf_notify;
+    int16_t *beeper_buf;         /* PCM buffer (1152 stereo frames, heap) */
+    int      beeper_buf_pos;     /* write position in stereo frames */
+    bool     beeper_audio;       /* I2S audio active */
 
     int int_counter;
     uint32_t display_ram_bank;
@@ -130,12 +128,16 @@ static void _zx_init_keyboard_matrix(zx_t* sys);
 void zx_init(zx_t* sys, const zx_desc_t* desc) {
     CHIPS_ASSERT(sys && desc);
 
-    /* Save ram bank pointers across memset (allocated externally) */
+    /* Save heap pointers across memset (allocated externally) */
     uint8_t *saved_ram[3] = { sys->ram[0], sys->ram[1], sys->ram[2] };
+    int16_t *saved_beeper_buf = sys->beeper_buf;
+    bool     saved_beeper_audio = sys->beeper_audio;
     memset(sys, 0, sizeof(zx_t));
     sys->ram[0] = saved_ram[0];
     sys->ram[1] = saved_ram[1];
     sys->ram[2] = saved_ram[2];
+    sys->beeper_buf = saved_beeper_buf;
+    sys->beeper_audio = saved_beeper_audio;
     sys->valid = true;
     sys->type = desc->type;
     sys->joystick_type = desc->joystick_type;
@@ -168,11 +170,8 @@ void zx_init(zx_t* sys, const zx_desc_t* desc) {
         if (sys->ram[i]) memset(sys->ram[i], 0, 0x4000);
     }
 
-    /* Audio initialization */
-    memset(sys->audiobuf, 0, sizeof(sys->audiobuf));
-    sys->audiobuf_byte = 0;
-    sys->audiobuf_bit = 0;
-    sys->audiobuf_notify = 0;
+    /* Audio: reset buffer position (beeper_buf preserved across init) */
+    sys->beeper_buf_pos = 0;
 }
 
 void zx_discard(zx_t* sys) {
@@ -228,9 +227,20 @@ uint32_t zx_exec(zx_t* sys, uint32_t micro_seconds) {
              * will eventually wake it and ROM error handling runs. */
         }
 
-        /* Scanline boundary → check vblank */
+        /* Scanline boundary → sample beeper + check vblank */
         if (sys->scanline_counter <= 0) {
             sys->scanline_counter += sys->scanline_period;
+
+            /* Sample beeper for I2S audio (one sample per scanline = 15625 Hz).
+             * Stop at 1152 — caller drains the buffer via pcm_write. */
+            if (sys->beeper_buf && sys->beeper_buf_pos < 1152) {
+                int16_t s = sys->beeper_state ? 4096 : -4096;
+                int pos = sys->beeper_buf_pos;
+                sys->beeper_buf[pos * 2]     = s;
+                sys->beeper_buf[pos * 2 + 1] = s;
+                sys->beeper_buf_pos = pos + 1;
+            }
+
             if (++sys->scanline_y >= sys->frame_scan_lines) {
                 sys->scanline_y = 0;
                 sys->blink_counter++;

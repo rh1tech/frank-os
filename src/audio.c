@@ -49,8 +49,8 @@
 #define DMA_BUFFER_COUNT  2
 
 /* Maximum DMA transfer size in 32-bit words (stereo frames).
- * 44100 Hz / 100 = 441 frames is a typical upper bound for FRANK OS. */
-#define DMA_BUFFER_MAX_SAMPLES 1024
+ * 1152 accommodates a full MPEG1 Layer 3 frame for direct-write mode. */
+#define DMA_BUFFER_MAX_SAMPLES 1152
 
 static uint32_t __attribute__((aligned(4)))
     dma_buffers[DMA_BUFFER_COUNT][DMA_BUFFER_MAX_SAMPLES];
@@ -284,6 +284,73 @@ void i2s_dma_write(i2s_config_t *config, const int16_t *samples) {
             audio_running = true;
         }
     }
+}
+
+/*==========================================================================
+ * i2s_dma_write_nb — non-blocking variant (safe to call from ISR context)
+ *
+ * Returns true if data was written, false if no DMA buffer is free.
+ *==========================================================================*/
+bool i2s_dma_write_nb(i2s_config_t *config, const int16_t *samples) {
+    uint32_t sample_count = dma_transfer_count;
+    uint8_t buf_index = 0;
+
+    uint32_t irq_state = save_and_disable_interrupts();
+    uint32_t free_mask = dma_buffers_free_mask;
+
+    if (!audio_running) {
+        buf_index = (uint8_t)preroll_count;
+        if (buf_index >= DMA_BUFFER_COUNT ||
+            !(free_mask & (1u << buf_index))) {
+            restore_interrupts(irq_state);
+            return false;
+        }
+        dma_buffers_free_mask &= ~(1u << buf_index);
+    } else {
+        if (!free_mask) {
+            restore_interrupts(irq_state);
+            return false;
+        }
+        buf_index = (free_mask & 1u) ? 0 : 1;
+        dma_buffers_free_mask &= ~(1u << buf_index);
+    }
+    restore_interrupts(irq_state);
+
+    uint32_t *write_ptr = dma_buffers[buf_index];
+    int16_t  *write_ptr16 = (int16_t *)(void *)write_ptr;
+
+    if (config->volume == 0) {
+        memcpy(write_ptr, samples, sample_count * sizeof(uint32_t));
+    } else {
+        for (uint32_t i = 0; i < sample_count * 2; i++)
+            write_ptr16[i] = samples[i] >> config->volume;
+    }
+
+    if (sample_count < dma_transfer_count) {
+        memset(&write_ptr[sample_count], 0,
+               (dma_transfer_count - sample_count) * sizeof(uint32_t));
+    }
+
+    __dmb();
+
+    if (!audio_running) {
+        preroll_count++;
+        if (preroll_count >= PREROLL_BUFFERS) {
+            dma_channel_start(dma_channel_a);
+            audio_running = true;
+        }
+    }
+
+    return true;
+}
+
+/*==========================================================================
+ * i2s_is_buffer_free — check if a DMA buffer can accept data (ISR-safe)
+ *==========================================================================*/
+bool i2s_is_buffer_free(void) {
+    if (!audio_running)
+        return preroll_count < DMA_BUFFER_COUNT;
+    return dma_buffers_free_mask != 0;
 }
 
 /*==========================================================================

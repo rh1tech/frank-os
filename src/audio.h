@@ -27,6 +27,8 @@ typedef struct {
 void i2s_init(i2s_config_t *config);
 void i2s_deinit(i2s_config_t *config);
 void i2s_dma_write(i2s_config_t *config, const int16_t *samples);
+bool i2s_dma_write_nb(i2s_config_t *config, const int16_t *samples);
+bool i2s_is_buffer_free(void);
 void i2s_volume(i2s_config_t *config, uint8_t volume);
 void i2s_increase_volume(i2s_config_t *config);
 void i2s_decrease_volume(i2s_config_t *config);

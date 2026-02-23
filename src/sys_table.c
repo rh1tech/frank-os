@@ -600,6 +600,8 @@ unsigned long __in_systable() __aligned(4096) sys_table_ptrs[] = {
     MP3Decode, // 446
     MP3GetLastFrameInfo, // 447
     MP3GetNextFrameInfo, // 448
+    pcm_init, // 449
+    pcm_write, // 450
     // TODO:
     0
 };

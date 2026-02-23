@@ -56,11 +56,17 @@ static repeating_timer_t m_timer = { 0 };
 static volatile pcm_end_callback_t m_cb = NULL;
 
 static bool __not_in_flash_func(timer_callback)(repeating_timer_t *rt) {
+    /* Only call the callback when a DMA buffer is free.  The callback
+     * advances playback state (offset, buffer swap) — calling it without
+     * actually writing the data would silently drop audio chunks. */
+    if (!i2s_is_buffer_free()) return true;
+
     size_t size = 0;
     char* buff = m_cb(&size);
+    if (!buff || size == 0) return true;
     i2s_config.dma_buf = buff;
     i2s_config.dma_trans_count = size >> 1;
-    i2s_dma_write(&i2s_config, buff);
+    i2s_dma_write_nb(&i2s_config, (const int16_t *)buff);
     return true;
 }
 
@@ -92,4 +98,23 @@ void pcm_set_buffer(int16_t* buff, uint8_t channels, size_t size, pcm_end_callba
     i2s_init(&i2s_config);
     i2s_dma_write(&i2s_config, buff);
     add_repeating_timer_us(1000000 * size * channels / i2s_config.sample_freq, timer_callback, NULL, &m_timer);
+}
+
+/* Direct I2S mode — task-context blocking writes, no timer/ISR.
+ * Call pcm_init once, then pcm_write repeatedly from the main loop. */
+void pcm_init(int sample_rate, int channels) {
+    if (m_timer.delay_us) {
+        cancel_repeating_timer(&m_timer);
+        m_timer.delay_us = 0;
+    }
+    i2s_config.sample_freq = sample_rate;
+    i2s_config.channel_count = channels;
+    i2s_config.dma_trans_count = 1152; /* one full MP3 frame */
+    i2s_volume(&i2s_config, 0);
+    i2s_init(&i2s_config);
+}
+
+void pcm_write(const int16_t *samples, int count) {
+    (void)count;
+    i2s_dma_write(&i2s_config, samples);
 }

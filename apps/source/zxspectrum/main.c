@@ -28,9 +28,6 @@
 #undef inline
 #undef __force_inline
 
-/* Disable audio — SPEAKER_PIN == -1 skips audio sampling in zx_exec */
-#define SPEAKER_PIN -1
-
 /* Override assert for freestanding environment */
 #define CHIPS_ASSERT(c) ((void)(c))
 
@@ -419,6 +416,14 @@ int main(int argc, char **argv) {
     zx->ram[1] = ram_block + 0x4000;
     zx->ram[2] = ram_block + 0x8000;
 
+    /* Allocate I2S beeper audio buffer (1152 stereo frames) */
+    int16_t *beeper_buf = (int16_t *)pvPortMalloc(1152 * 2 * sizeof(int16_t));
+    if (beeper_buf) {
+        memset(beeper_buf, 0, 1152 * 2 * sizeof(int16_t));
+        zx->beeper_buf = beeper_buf;
+        pcm_init(15625, 2);
+        zx->beeper_audio = true;
+    }
 
     /* Initialise ZX Spectrum 48K emulator */
     zx_desc_t desc;
@@ -488,13 +493,20 @@ int main(int argc, char **argv) {
 
         for (int burst = 0; burst < 8 && !G->closing; burst++) {
             zx_exec(zx, 2500);
+            /* Drain beeper PCM buffer — pcm_write blocks until a DMA
+             * buffer is free, which throttles us to real-time. */
+            if (zx->beeper_buf_pos >= 1152) {
+                pcm_write(zx->beeper_buf, 1152);
+                zx->beeper_buf_pos = 0;
+            }
         }
 
         /* Always invalidate — needed for FLASH attribute blinking
          * even when VRAM content hasn't changed */
         G->vram_dirty = false;
         wm_invalidate(G->app_hwnd);
-        vTaskDelay(pdMS_TO_TICKS(1));
+        if (!zx->beeper_audio)
+            vTaskDelay(pdMS_TO_TICKS(1));
     }
 
     wm_destroy_window(G->app_hwnd);
@@ -502,6 +514,9 @@ int main(int argc, char **argv) {
     if (G->tap_loaded) {
         f_close(G->tap_file);
         G->tap_loaded = false;
+    }
+    if (zx->beeper_audio) {
+        pcm_cleanup();
     }
     zx->tape_trap = NULL;
     vPortFree(zx);

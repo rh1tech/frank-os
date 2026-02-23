@@ -1086,6 +1086,16 @@ inline static int MP3GetNextFrameInfo(HMP3Decoder hMP3Decoder, MP3FrameInfo *inf
     return ((fn_ptr_t)_sys_table_ptrs[448])(hMP3Decoder, info, buf);
 }
 
+/* Direct I2S audio — blocking writes from task context (no ISR). */
+inline static void pcm_init(int sample_rate, int channels) { // 449
+    typedef void (*fn_ptr_t)(int, int);
+    ((fn_ptr_t)_sys_table_ptrs[449])(sample_rate, channels);
+}
+inline static void pcm_write(const int16_t *samples, int count) { // 450
+    typedef void (*fn_ptr_t)(const int16_t *, int);
+    ((fn_ptr_t)_sys_table_ptrs[450])(samples, count);
+}
+
 #define abs(x) (x > 0 ? x : -x)
 
 extern volatile bool marked_to_exit;
