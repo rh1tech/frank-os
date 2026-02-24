@@ -40,7 +40,7 @@ static alignas(4) uint8_t framebuffer_a[FB_STRIDE * FB_HEIGHT];
 static alignas(4) uint8_t framebuffer_b[FB_STRIDE * FB_HEIGHT];
 
 static uint8_t *draw_buffer = framebuffer_b;
-static uint8_t *show_buffer = framebuffer_a;
+uint8_t *display_show_buffer_ptr = framebuffer_a;
 
 /* Public pointer for inline fast-path access (display.h) */
 uint8_t *display_draw_buffer_ptr = framebuffer_b;
@@ -64,7 +64,7 @@ void display_init(void) {
     }
 
     // Initialize DispHSTX in 640x480 4-bit paletted mode (252 MHz sys_clock).
-    // We pass our own framebuffer (show_buffer) so the library doesn't malloc one.
+    // We pass our own framebuffer (display_show_buffer_ptr) so the library doesn't malloc one.
     // The library launches Core 1 internally for DVI rendering.
     sDispHstxVModeState *vmode = &DispHstxVMode;
     DispHstxVModeInitTime(vmode, &DispHstxVModeTimeList[vmodetime_640x480_fast]);
@@ -76,7 +76,7 @@ void display_init(void) {
         1,                          // vdbl: 1 = no vertical doubling
         -1,                         // w: -1 = full width (640 pixels)
         DISPHSTX_FORMAT_4_PAL,     // 4-bit paletted
-        show_buffer,                // our own framebuffer
+        display_show_buffer_ptr,                // our own framebuffer
         -1,                         // pitch: -1 = auto (320 bytes)
         cga_palette_rgb565,         // our CGA palette
         NULL,                       // palvga: not used (DVI only)
@@ -113,13 +113,13 @@ void display_clear(uint8_t color) {
 
 void display_swap_buffers(void) {
     uint8_t *tmp = draw_buffer;
-    draw_buffer = show_buffer;
-    show_buffer = tmp;
+    draw_buffer = display_show_buffer_ptr;
+    display_show_buffer_ptr = tmp;
     display_draw_buffer_ptr = draw_buffer;
 
     // Update the DispHSTX slot's framebuffer pointer to the new show buffer.
     // The library reads this pointer during scanline rendering on Core 1.
-    pDispHstxVMode->strip[0].slot[0].buf = show_buffer;
+    pDispHstxVMode->strip[0].slot[0].buf = display_show_buffer_ptr;
 }
 
 void display_wait_vsync(void) {

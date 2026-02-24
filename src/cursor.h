@@ -31,4 +31,22 @@ cursor_type_t cursor_get_type(void);
 /* Draw the current cursor at screen position (x, y). */
 void cursor_draw(int16_t x, int16_t y);
 
+/* --- Show-buffer cursor overlay (save-under) --- */
+
+/* Save pixels under cursor from show buffer, draw cursor onto show buffer */
+void cursor_overlay_stamp(int16_t x, int16_t y);
+
+/* Restore saved pixels to show buffer */
+void cursor_overlay_erase(void);
+
+/* Erase + stamp at new position; no-op if position and type unchanged */
+void cursor_overlay_move(int16_t new_x, int16_t new_y);
+
+/* Invalidate overlay state without restoring (before compositor clears) */
+void cursor_overlay_reset(void);
+
+/* Prevent/allow input_task from modifying show buffer during compositor swap */
+void cursor_overlay_lock(void);
+void cursor_overlay_unlock(void);
+
 #endif /* CURSOR_H */

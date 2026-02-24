@@ -107,7 +107,8 @@ bool wm_post_event(hwnd_t hwnd, const window_event_t *event) {
     eq_head = (eq_head + 1) % WM_EVENT_QUEUE_SIZE;
     eq_count++;
     spin_unlock(eq_spinlock, save);
-    compositor_dirty = 1;
+    if (event->type != WM_MOUSEMOVE)
+        compositor_dirty = 1;
     return true;
 }
 
@@ -181,7 +182,6 @@ uint8_t wm_get_modifiers(void) {
 
 void wm_set_cursor_pos(int16_t x, int16_t y) {
     cursor_pos_packed = ((uint32_t)(uint16_t)x << 16) | (uint32_t)(uint16_t)y;
-    compositor_dirty = 1;
 }
 
 void wm_get_cursor_pos(int16_t *x, int16_t *y) {

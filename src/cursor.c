@@ -195,3 +195,127 @@ void cursor_draw(int16_t x, int16_t y) {
         }
     }
 }
+
+/*==========================================================================
+ * Show-buffer cursor overlay with save-under
+ *
+ * The compositor renders a "clean" frame (no cursor) to the draw buffer.
+ * After display_swap_buffers(), the cursor is stamped onto the show buffer
+ * using a save-under technique.  When only the cursor moves (no content
+ * change), we restore the saved pixels and redraw the cursor at the new
+ * position directly on the show buffer — no compositor involvement needed.
+ *=========================================================================*/
+
+#define OVERLAY_MAX_BPR   12   /* max bytes per row: ceil(21/2) + 1 for alignment */
+#define OVERLAY_MAX_ROWS  22   /* tallest cursor: wait (22 rows) */
+#define OVERLAY_SAVE_SIZE (OVERLAY_MAX_BPR * OVERLAY_MAX_ROWS)
+
+static struct {
+    bool           valid;           /* overlay is currently stamped */
+    int16_t        stamp_x, stamp_y; /* cursor position when stamped */
+    cursor_type_t  stamp_type;      /* cursor type when stamped */
+    int16_t        save_byte_x;     /* first FB byte column of saved region */
+    int16_t        save_bpr;        /* bytes per row in saved region */
+    int16_t        save_y0, save_y1; /* first/last row (inclusive) */
+    uint8_t        save[OVERLAY_SAVE_SIZE];
+    volatile bool  locked;
+} overlay;
+
+void cursor_overlay_stamp(int16_t x, int16_t y) {
+    const cursor_def_t *c = &cursors[current_cursor];
+    int16_t ox = x - c->hotspot_x;
+    int16_t oy = y - c->hotspot_y;
+
+    /* Clipped bounding box */
+    int16_t x0 = ox < 0 ? 0 : ox;
+    int16_t y0 = oy < 0 ? 0 : oy;
+    int16_t x1 = ox + c->w - 1;
+    int16_t y1 = oy + c->h - 1;
+    if (x1 >= DISPLAY_WIDTH)  x1 = DISPLAY_WIDTH  - 1;
+    if (y1 >= DISPLAY_HEIGHT) y1 = DISPLAY_HEIGHT - 1;
+
+    if (x0 > x1 || y0 > y1) {
+        overlay.valid = false;
+        return;
+    }
+
+    /* Byte range in framebuffer */
+    int16_t byte_x0 = x0 >> 1;
+    int16_t byte_x1 = x1 >> 1;
+    int16_t bpr = byte_x1 - byte_x0 + 1;
+
+    overlay.save_byte_x = byte_x0;
+    overlay.save_bpr    = bpr;
+    overlay.save_y0     = y0;
+    overlay.save_y1     = y1;
+    overlay.stamp_x     = x;
+    overlay.stamp_y     = y;
+    overlay.stamp_type  = current_cursor;
+
+    /* Save show-buffer pixels under cursor */
+    uint8_t *show = display_show_buffer_ptr;
+    uint8_t *dst  = overlay.save;
+    for (int16_t row = y0; row <= y1; row++) {
+        memcpy(dst, &show[row * FB_STRIDE + byte_x0], bpr);
+        dst += bpr;
+    }
+
+    /* Draw cursor onto show buffer */
+    for (int row = 0; row < c->h; row++) {
+        int py = oy + row;
+        if (py < 0 || py >= DISPLAY_HEIGHT) continue;
+        for (int col = 0; col < c->w; col++) {
+            uint8_t px_val = c->bitmap[row * c->w + col];
+            if (px_val == 0) continue;
+            int px = ox + col;
+            if (px < 0 || px >= DISPLAY_WIDTH) continue;
+            uint8_t color = (px_val == 1) ? COLOR_BLACK : COLOR_WHITE;
+            uint8_t *p = &show[py * FB_STRIDE + (px >> 1)];
+            if (px & 1)
+                *p = (*p & 0xF0) | color;
+            else
+                *p = (*p & 0x0F) | (color << 4);
+        }
+    }
+
+    overlay.valid = true;
+}
+
+void cursor_overlay_erase(void) {
+    if (!overlay.valid) return;
+
+    uint8_t *show = display_show_buffer_ptr;
+    const uint8_t *src = overlay.save;
+    int16_t bpr = overlay.save_bpr;
+
+    for (int16_t row = overlay.save_y0; row <= overlay.save_y1; row++) {
+        memcpy(&show[row * FB_STRIDE + overlay.save_byte_x], src, bpr);
+        src += bpr;
+    }
+
+    overlay.valid = false;
+}
+
+void cursor_overlay_move(int16_t new_x, int16_t new_y) {
+    if (overlay.locked) return;
+    /* No-op if position and cursor type are unchanged */
+    if (overlay.valid &&
+        new_x == overlay.stamp_x && new_y == overlay.stamp_y &&
+        current_cursor == overlay.stamp_type)
+        return;
+
+    cursor_overlay_erase();
+    cursor_overlay_stamp(new_x, new_y);
+}
+
+void cursor_overlay_reset(void) {
+    overlay.valid = false;
+}
+
+void cursor_overlay_lock(void) {
+    overlay.locked = true;
+}
+
+void cursor_overlay_unlock(void) {
+    overlay.locked = false;
+}

@@ -31,11 +31,11 @@
 // CPU Speed Defaults
 //=============================================================================
 #ifndef CPU_CLOCK_MHZ
-#define CPU_CLOCK_MHZ 252
+#define CPU_CLOCK_MHZ 504
 #endif
 
 #ifndef CPU_VOLTAGE
-#define CPU_VOLTAGE VREG_VOLTAGE_1_50
+#define CPU_VOLTAGE VREG_VOLTAGE_1_65
 #endif
 
 //=============================================================================

@@ -29,6 +29,9 @@ void display_draw_test_pattern(void);
 /* Direct draw-buffer pointer — updated by display_init / display_swap_buffers */
 extern uint8_t *display_draw_buffer_ptr;
 
+/* Direct show-buffer pointer — updated by display_init / display_swap_buffers */
+extern uint8_t *display_show_buffer_ptr;
+
 /* Fast pixel set — no bounds check, caller must guarantee valid coords.
  * x is in 640-wide screen coords, y in 480-high coords. */
 static inline void display_set_pixel_fast(int x, int y, uint8_t color) {

@@ -469,15 +469,55 @@ static void input_task(void *params) {
             }
             prev_buttons = buttons;
 
-            /* Signal compositor to recomposite */
-            g_video_dirty = true;
+            /* Button state changed — full recomposite needed */
+            if (changed) {
+                g_video_dirty = true;
+            } else {
+                /* Move only — cheap show-buffer cursor update */
+                cursor_overlay_move(cur_x, cur_y);
+            }
         }
 
         vTaskDelay(pdMS_TO_TICKS(8));
     }
 }
 
+/*---------------------------------------------------------------------------
+ * Flash QMI timing — must be called BEFORE changing the system clock.
+ * Calculates divisor and RX delay from the target CPU speed and
+ * FLASH_MAX_FREQ_MHZ (set via CMake -DFLASH_SPEED=xx, default 66).
+ *-------------------------------------------------------------------------*/
+#ifndef FLASH_MAX_FREQ_MHZ
+#define FLASH_MAX_FREQ_MHZ 66
+#endif
+
+static void __no_inline_not_in_flash_func(set_flash_timings)(int cpu_mhz) {
+    const int clock_hz = cpu_mhz * 1000000;
+    const int max_flash_freq = FLASH_MAX_FREQ_MHZ * 1000000;
+
+    int divisor = (clock_hz + max_flash_freq - (max_flash_freq >> 4) - 1) / max_flash_freq;
+    if (divisor == 1 && clock_hz >= 166000000) {
+        divisor = 2;
+    }
+
+    int rxdelay = divisor;
+    if (clock_hz / divisor > 100000000 && clock_hz >= 166000000) {
+        rxdelay += 1;
+    }
+
+    qmi_hw->m[0].timing = 0x60007000 |
+                        rxdelay << QMI_M0_TIMING_RXDELAY_LSB |
+                        divisor << QMI_M0_TIMING_CLKDIV_LSB;
+}
+
 int main(void) {
+#if CPU_CLOCK_MHZ > 252
+    vreg_disable_voltage_limit();
+    vreg_set_voltage(CPU_VOLTAGE);
+    set_flash_timings(CPU_CLOCK_MHZ);
+    sleep_ms(100);
+#endif
+
     if (!set_sys_clock_khz(CPU_CLOCK_MHZ * 1000, false)) {
         set_sys_clock_khz(252 * 1000, true);
     }

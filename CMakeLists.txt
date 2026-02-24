@@ -32,7 +32,10 @@ add_subdirectory(drivers/fatfs)
 include(drivers/sdcard/sdcard.cmake)
 
 # PSRAM speed option (set to "" to disable PSRAM HW init; detection still runs)
-set(PSRAM_SPEED "84" CACHE STRING "PSRAM max frequency in MHz (empty to disable HW init)")
+set(PSRAM_SPEED "166" CACHE STRING "PSRAM max frequency in MHz (empty to disable HW init)")
+
+# Flash chip max frequency
+set(FLASH_SPEED "66" CACHE STRING "Flash chip max frequency in MHz")
 
 # Collect MOS2 musl source files
 file(GLOB MUSL_SRC "src/musl/*.c")
@@ -115,6 +118,11 @@ if(PSRAM_SPEED)
     target_compile_definitions(frankos PRIVATE PSRAM_MAX_FREQ_MHZ=${PSRAM_SPEED})
 endif()
 
+# Flash max frequency define (used by set_flash_timings in main.c)
+if(FLASH_SPEED)
+    target_compile_definitions(frankos PRIVATE FLASH_MAX_FREQ_MHZ=${FLASH_SPEED})
+endif()
+
 # Force-include our DispHSTX config so the library sees it before its own _config.h
 target_compile_options(frankos PRIVATE -include ${CMAKE_CURRENT_LIST_DIR}/src/config.h)
 
@@ -147,7 +155,7 @@ target_compile_definitions(frankos PRIVATE
     MIN_API_VERSION=14
     RESERVED_RAM=512
     OS_FLASH_SIZE=256
-    OVERCLOCKING=378
+    OVERCLOCKING=504
     I2S_SOUND=1
 )
 

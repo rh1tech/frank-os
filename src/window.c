@@ -552,10 +552,13 @@ static void draw_window_decorations(hwnd_t hwnd, window_t *win) {
  *=========================================================================*/
 
 void wm_composite(void) {
+    cursor_overlay_lock();
+    cursor_overlay_reset();   /* old show buffer becomes draw buffer — will be cleared */
+
     /* Clear to desktop color */
     display_clear(THEME_DESKTOP_COLOR);
 
-    /* Paint visible windows back-to-front */
+    /* Paint visible windows back-to-front (NO cursor drawing) */
     for (uint8_t i = 0; i < z_count; i++) {
         hwnd_t hwnd = z_stack[i];
         window_t *win = &windows[hwnd - 1];
@@ -593,10 +596,12 @@ void wm_composite(void) {
         }
     }
 
-    /* Draw mouse cursor as final layer */
+    display_swap_buffers();
+
+    /* Stamp cursor on the new show buffer (save-under overlay) */
     int16_t mx, my;
     wm_get_cursor_pos(&mx, &my);
-    cursor_draw(mx, my);
+    cursor_overlay_stamp(mx, my);
 
-    display_swap_buffers();
+    cursor_overlay_unlock();
 }

@@ -28,7 +28,7 @@
 #define configAPPLICATION_ALLOCATED_HEAP        0
 
 /* CPU */
-#define configCPU_CLOCK_HZ                      252000000
+#define configCPU_CLOCK_HZ                      504000000
 #define configMAX_SYSCALL_INTERRUPT_PRIORITY     16  /* priority 1 shifted left by 4 for Cortex-M33 */
 #define configKERNEL_INTERRUPT_PRIORITY          (255)
 
