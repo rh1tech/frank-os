@@ -889,11 +889,12 @@ void wm_composite(void) {
 
             if (win->paint_handler) {
                 /* Skip paint if client area extends past framebuffer
-                 * height — apps using wd_fb_ptr() write directly
-                 * with stride and may overflow the buffer. */
+                 * bounds — apps using wd_fb_ptr() write directly
+                 * with stride and may overflow into the next row. */
                 point_t co = theme_client_origin(&win->frame, win->flags);
                 rect_t  cr = theme_client_rect(&win->frame, win->flags);
-                if (co.y + cr.h <= FB_HEIGHT && co.x >= 0) {
+                if (co.y + cr.h <= FB_HEIGHT && co.x >= 0 &&
+                    co.x + cr.w <= DISPLAY_WIDTH) {
                     wd_begin(hwnd);
                     win->paint_handler(hwnd);
                     wd_end();
@@ -927,7 +928,8 @@ void wm_composite(void) {
             if (mwin->paint_handler) {
                 point_t co = theme_client_origin(&mwin->frame, mwin->flags);
                 rect_t  cr = theme_client_rect(&mwin->frame, mwin->flags);
-                if (co.y + cr.h <= FB_HEIGHT && co.x >= 0) {
+                if (co.y + cr.h <= FB_HEIGHT && co.x >= 0 &&
+                    co.x + cr.w <= DISPLAY_WIDTH) {
                     wd_begin(mhwnd);
                     mwin->paint_handler(mhwnd);
                     wd_end();

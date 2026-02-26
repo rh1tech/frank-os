@@ -74,8 +74,11 @@ static rect_t  drag_rect;                /* proposed rect during drag */
 static uint8_t drag_edge;                /* HT_BORDER_* for resize */
 
 /* Drag outline overlay — XOR drawn on show buffer, zero extra RAM.
- * erase() uses drag_rect directly; callers must erase before updating it. */
-static bool drag_ol_active;
+ * drag_ol_rect tracks the position where the outline was last stamped
+ * so that erase always XORs the exact same pixels, even if drag_rect
+ * has been updated by input_task in the meantime. */
+static bool   drag_ol_active;
+static rect_t drag_ol_rect;
 
 /* Title bar button press tracking — press-on-release behavior */
 static hwnd_t  titlebar_btn_hwnd  = HWND_NULL; /* which window's button is captured */
@@ -244,6 +247,10 @@ static void begin_drag(hwnd_t hwnd, uint8_t mode, uint8_t edge,
     drag_orig     = win->frame;
     drag_rect     = win->frame;
     drag_edge     = edge;
+    /* Suspend the app while dragging — apps that write directly to the
+     * framebuffer (e.g. ZX Spectrum) cause artifacts if they keep
+     * rendering while the window outline moves. */
+    swap_suspend(hwnd);
 }
 
 static void update_resize_rect(int16_t mx, int16_t my) {
@@ -376,12 +383,13 @@ static void show_xor_outline(const rect_t *r) {
 void drag_overlay_stamp(const rect_t *r) {
     if (drag_ol_active) return;
     show_xor_outline(r);
+    drag_ol_rect = *r;
     drag_ol_active = true;
 }
 
 void drag_overlay_erase(void) {
     if (!drag_ol_active) return;
-    show_xor_outline(&drag_rect);
+    show_xor_outline(&drag_ol_rect);
     drag_ol_active = false;
 }
 
@@ -393,22 +401,17 @@ void wm_handle_mouse_input(uint8_t type, int16_t x, int16_t y, uint8_t buttons) 
     /* ---- Active drag/resize in progress ---- */
     if (drag_mode != DRAG_NONE) {
         if (type == WM_MOUSEMOVE) {
-            if (cursor_overlay_is_locked()) return;
-            /* Erase overlays while drag_rect still matches the stamp */
-            cursor_overlay_erase();
-            drag_overlay_erase();
-            /* Update drag_rect */
+            /* Only update drag_rect — compositor handles all XOR
+             * erase/stamp via drag_overlay_erase/stamp.  Doing XOR
+             * here from input_task races with compositor_task on the
+             * dual-core RP2350, causing outline flicker & garbage. */
             if (drag_mode == DRAG_MOVE) {
                 drag_rect.x = drag_orig.x + (x - drag_anchor_x);
                 drag_rect.y = drag_orig.y + (y - drag_anchor_y);
             } else {
                 update_resize_rect(x, y);
             }
-            /* Stamp new outline + cursor — no full recomposite */
-            drag_overlay_stamp(&drag_rect);
-            int16_t cx, cy;
-            wm_get_cursor_pos(&cx, &cy);
-            cursor_overlay_stamp(cx, cy);
+            compositor_dirty = 1;
             return;
         }
         if (type == WM_LBUTTONUP) {
@@ -419,6 +422,8 @@ void wm_handle_mouse_input(uint8_t type, int16_t x, int16_t y, uint8_t buttons) 
             }
             wm_set_window_rect(drag_hwnd, drag_rect.x, drag_rect.y,
                                 drag_rect.w, drag_rect.h);
+            /* Resume the app after the window has been repositioned */
+            swap_resume(drag_hwnd);
             drag_mode = DRAG_NONE;
             drag_hwnd = HWND_NULL;
             cursor_set_type(CURSOR_ARROW);
@@ -530,11 +535,14 @@ void wm_handle_mouse_input(uint8_t type, int16_t x, int16_t y, uint8_t buttons) 
             case HT_CLOSE:
             case HT_MAXIMIZE:
             case HT_MINIMIZE:
-                /* Capture button press — action fires on release */
+                /* Capture button press — action fires on release.
+                 * Set FRAME_DIRTY directly (wm_invalidate skips
+                 * non-focused windows and doesn't repaint decorations). */
                 titlebar_btn_hwnd  = target;
                 titlebar_btn_zone  = zone;
                 titlebar_btn_shown = true;
-                wm_invalidate(target);
+                win->flags |= WF_DIRTY | WF_FRAME_DIRTY;
+                wm_mark_dirty();
                 return;
 
             case HT_MENUBAR:
@@ -600,7 +608,8 @@ void wm_handle_mouse_input(uint8_t type, int16_t x, int16_t y, uint8_t buttons) 
                     }
                 }
             }
-            wm_invalidate(btn_hwnd);
+            if (bwin)
+                bwin->flags |= WF_DIRTY | WF_FRAME_DIRTY;
             compositor_dirty = 1;
             return;
         }
@@ -626,7 +635,8 @@ void wm_handle_mouse_input(uint8_t type, int16_t x, int16_t y, uint8_t buttons) 
                 bool over = (zone == titlebar_btn_zone);
                 if (over != titlebar_btn_shown) {
                     titlebar_btn_shown = over;
-                    wm_invalidate(titlebar_btn_hwnd);
+                    bwin->flags |= WF_DIRTY | WF_FRAME_DIRTY;
+                    wm_mark_dirty();
                 }
             }
             return;
