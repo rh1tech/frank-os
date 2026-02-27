@@ -33,4 +33,7 @@ bool startmenu_mouse(uint8_t type, int16_t x, int16_t y);
 /* Handle keyboard navigation. Returns true if consumed. */
 bool startmenu_handle_key(uint8_t hid_code, uint8_t modifiers);
 
+/* Poll for deferred dialog results (call from compositor loop) */
+void startmenu_check_pending(void);
+
 #endif /* STARTMENU_H */

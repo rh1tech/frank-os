@@ -369,6 +369,9 @@ static void compositor_task(void *params) {
          * and we do the actual stack restore here (on our own stack). */
         swap_process_deferred();
 
+        /* Check for deferred start menu actions (dialog confirmations) */
+        startmenu_check_pending();
+
         /* Recomposite when input arrives OR when windows are
          * invalidated (e.g. terminal output, cursor blink).
          * Always drain both flags to avoid a stale-flag repeat. */

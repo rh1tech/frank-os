@@ -58,4 +58,9 @@ hwnd_t dialog_input_show(hwnd_t parent, const char *title,
  * Only valid after DLG_RESULT_INPUT is received. */
 const char *dialog_input_get_text(void);
 
+/* Poll for a dialog result when parent == HWND_NULL.
+ * Returns the result code once, then 0 on subsequent calls.
+ * Use this to check dialog dismissal from non-window code (e.g. overlays). */
+uint16_t dialog_poll_result(void);
+
 #endif /* DIALOG_H */

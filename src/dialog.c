@@ -56,6 +56,9 @@ static uint16_t    dlg_btn_ids[4];
 static const char *dlg_text;
 static int8_t      dlg_btn_pressed = -1;  /* index of mouse-pressed button (-1 = none) */
 
+/* Parentless dialog result — stored here for polling via dialog_poll_result() */
+static uint16_t    dlg_pending_result = 0;
+
 /* Cached layout values (computed once in dialog_show) */
 static int16_t     dlg_text_x;
 static int16_t     dlg_client_w;
@@ -189,9 +192,9 @@ static void dialog_close(uint16_t result) {
     wm_destroy_window(dlg_hwnd);
     dlg_hwnd = HWND_NULL;
 
-    /* Restore focus to parent window (must happen after modal is cleared
-     * and dialog is destroyed, otherwise wm_set_focus refuses the change) */
     if (dlg_parent != HWND_NULL) {
+        /* Restore focus to parent window (must happen after modal is cleared
+         * and dialog is destroyed, otherwise wm_set_focus refuses the change) */
         wm_set_focus(dlg_parent);
 
         window_event_t ev;
@@ -199,6 +202,9 @@ static void dialog_close(uint16_t result) {
         ev.type = WM_COMMAND;
         ev.command.id = result;
         wm_post_event(dlg_parent, &ev);
+    } else {
+        /* No parent — store result for polling via dialog_poll_result() */
+        dlg_pending_result = result;
     }
 }
 
@@ -405,6 +411,12 @@ hwnd_t dialog_show(hwnd_t parent, const char *title, const char *text,
     wm_set_modal(dlg_hwnd);
 
     return dlg_hwnd;
+}
+
+uint16_t dialog_poll_result(void) {
+    uint16_t r = dlg_pending_result;
+    dlg_pending_result = 0;
+    return r;
 }
 
 /*==========================================================================

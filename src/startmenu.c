@@ -14,6 +14,7 @@
 #include "terminal.h"
 #include "filemanager.h"
 #include "app.h"
+#include "dialog.h"
 #include "cursor.h"
 #include "gfx.h"
 #include "font.h"
@@ -22,6 +23,7 @@
 #include "ff.h"
 #include "hardware/watchdog.h"
 #include <string.h>
+#include <stdio.h>
 #include <ctype.h>
 
 /*==========================================================================
@@ -211,6 +213,12 @@ static bool   fw_open = false;
 static int8_t fw_hover = -1;
 static int16_t fw_x, fw_y, fw_w, fw_h;
 
+/* Pending action state — deferred until dialog is dismissed */
+enum { PENDING_NONE, PENDING_REBOOT, PENDING_FIRMWARE };
+static uint8_t pending_action = PENDING_NONE;
+static int     pending_fw_index = -1;
+static char    pending_fw_text[128];
+
 /*==========================================================================
  * Geometry
  *=========================================================================*/
@@ -324,9 +332,7 @@ static void execute_sub_item(int index) {
     cursor_set_type(CURSOR_ARROW);
 }
 
-static void execute_fw_item(int index) {
-    if (index < 0 || index >= uf2_file_count) return;
-    startmenu_close();
+static void do_flash_firmware(int index) {
     cursor_set_type(CURSOR_WAIT);
     wm_composite();
 
@@ -342,6 +348,23 @@ static void execute_fw_item(int index) {
     cursor_set_type(CURSOR_ARROW);
 }
 
+static void execute_fw_item(int index) {
+    if (index < 0 || index >= uf2_file_count) return;
+    startmenu_close();
+
+    /* Build confirmation dialog text */
+    snprintf(pending_fw_text, sizeof(pending_fw_text),
+             "Launch \"%s\"?\n\n"
+             "To return to FRANK OS,\n"
+             "hold Space and press Reset.",
+             uf2_files[index].name);
+
+    pending_action = PENDING_FIRMWARE;
+    pending_fw_index = index;
+    dialog_show(HWND_NULL, "Launch Firmware", pending_fw_text,
+                DLG_ICON_WARNING, DLG_BTN_OK | DLG_BTN_CANCEL);
+}
+
 static void execute_item(uint8_t id) {
     startmenu_close();
     switch (id) {
@@ -349,7 +372,33 @@ static void execute_item(uint8_t id) {
         spawn_terminal_window();
         break;
     case SM_ID_REBOOT:
+        pending_action = PENDING_REBOOT;
+        dialog_show(HWND_NULL, "Reboot",
+                    "Are you sure you want to\nreboot the system?",
+                    DLG_ICON_WARNING, DLG_BTN_OK | DLG_BTN_CANCEL);
+        break;
+    }
+}
+
+void startmenu_check_pending(void) {
+    if (pending_action == PENDING_NONE) return;
+
+    uint16_t result = dialog_poll_result();
+    if (result == 0) return;  /* dialog still open */
+
+    uint8_t action = pending_action;
+    int fw_idx = pending_fw_index;
+    pending_action = PENDING_NONE;
+    pending_fw_index = -1;
+
+    if (result != DLG_RESULT_OK) return;  /* user cancelled */
+
+    switch (action) {
+    case PENDING_REBOOT:
         watchdog_reboot(0, 0, 0);
+        break;
+    case PENDING_FIRMWARE:
+        do_flash_firmware(fw_idx);
         break;
     }
 }
