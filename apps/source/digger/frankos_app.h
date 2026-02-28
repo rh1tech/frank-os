@@ -34,11 +34,19 @@
 #define DIGGER_AUDIO_SAMPLE_RATE       22050
 #define DIGGER_AUDIO_SAMPLES_PER_FRAME 1764
 
+/* Menu command IDs */
+#define CMD_NEW_GAME     1
+#define CMD_SOUND        2
+#define CMD_MUSIC        3
+#define CMD_EXIT         4
+#define CMD_ABOUT        5
+
 /* Shared state between game loop (app task) and FRANK OS callbacks (WM task) */
 typedef struct {
     void           *app_task;           /* FreeRTOS task handle */
     hwnd_t          app_hwnd;           /* Window handle */
     volatile bool   closing;            /* WM_CLOSE received */
+    volatile bool   restart;            /* New Game requested */
 
     /* Internal framebuffer: 4-bit nibble-packed, 320x240 */
     uint8_t        *framebuffer;
@@ -73,6 +81,10 @@ void audio_fill_and_submit(void);
 
 /* Screen update (called from game loop) */
 void doscreenupdate(void);
+
+/* Menu setup and update */
+void digger_setup_menu(void);
+void digger_update_menu(void);
 
 /* GetAsyncKeyState for rp2350_kbd.h compatibility */
 bool GetAsyncKeyState(int key);

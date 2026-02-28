@@ -71,10 +71,69 @@ static void inir_defaults(void) {
 }
 
 /*
+ * digger_setup_menu - Create the menu bar for the Digger window.
+ */
+void digger_setup_menu(void) {
+    if (!g_app || g_app->app_hwnd == HWND_NULL) return;
+
+    menu_bar_t bar;
+    memset(&bar, 0, sizeof(bar));
+    bar.menu_count = 2;
+
+    /* Game menu */
+    menu_def_t *game = &bar.menus[0];
+    strncpy(game->title, "Game", sizeof(game->title) - 1);
+    game->accel_key = 0x0A; /* Alt+G */
+    game->item_count = 6;
+
+    strncpy(game->items[0].text, "New Game", sizeof(game->items[0].text) - 1);
+    game->items[0].command_id = CMD_NEW_GAME;
+    game->items[0].accel_key = 0x3B; /* F2 */
+
+    game->items[1].flags = MIF_SEPARATOR;
+
+    strncpy(game->items[2].text,
+            soundflag ? "* Sound" : "  Sound",
+            sizeof(game->items[2].text) - 1);
+    game->items[2].command_id = CMD_SOUND;
+    game->items[2].accel_key = 0x42; /* F9 */
+
+    strncpy(game->items[3].text,
+            musicflag ? "* Music" : "  Music",
+            sizeof(game->items[3].text) - 1);
+    game->items[3].command_id = CMD_MUSIC;
+    game->items[3].accel_key = 0x40; /* F7 */
+
+    game->items[4].flags = MIF_SEPARATOR;
+
+    strncpy(game->items[5].text, "Exit", sizeof(game->items[5].text) - 1);
+    game->items[5].command_id = CMD_EXIT;
+    game->items[5].accel_key = 0x43; /* F10 */
+
+    /* Help menu */
+    menu_def_t *help = &bar.menus[1];
+    strncpy(help->title, "Help", sizeof(help->title) - 1);
+    help->accel_key = 0x0B; /* Alt+H */
+    help->item_count = 1;
+
+    strncpy(help->items[0].text, "About", sizeof(help->items[0].text) - 1);
+    help->items[0].command_id = CMD_ABOUT;
+
+    menu_set(g_app->app_hwnd, &bar);
+}
+
+/*
+ * digger_update_menu - Refresh sound/music checkmarks.
+ */
+void digger_update_menu(void) {
+    digger_setup_menu();
+}
+
+/*
  * digger_event - Window event handler (runs on WM task).
  *
- * Handles keyboard events and window close. Communicates with the
- * game task via the shared digger_app_t state.
+ * Handles keyboard events, menu commands, and window close.
+ * Communicates with the game task via the shared digger_app_t state.
  */
 bool digger_event(hwnd_t hwnd, const window_event_t *event) {
     if (!g_app)
@@ -86,6 +145,39 @@ bool digger_event(hwnd_t hwnd, const window_event_t *event) {
         if (g_app->app_task)
             xTaskNotifyGive(g_app->app_task);
         return true;
+    }
+
+    if (event->type == WM_COMMAND) {
+        switch (event->command.id) {
+        case CMD_NEW_GAME:
+            g_app->restart = true;
+            if (g_app->app_task)
+                xTaskNotifyGive(g_app->app_task);
+            return true;
+        case CMD_SOUND:
+            soundflag = !soundflag;
+            digger_update_menu();
+            return true;
+        case CMD_MUSIC:
+            musicflag = !musicflag;
+            digger_update_menu();
+            return true;
+        case CMD_EXIT:
+            g_app->closing = true;
+            if (g_app->app_task)
+                xTaskNotifyGive(g_app->app_task);
+            return true;
+        case CMD_ABOUT:
+            dialog_show(hwnd, "About Digger",
+                        "Digger Remastered\n\n"
+                        "(c) 1983 Windmill Software\n"
+                        "Restored by AJ Software\n\n"
+                        "FRANK OS port (c) 2026\n"
+                        "Mikhail Matveev",
+                        DLG_ICON_INFO, DLG_BTN_OK);
+            return true;
+        }
+        return false;
     }
 
     if (event->type == WM_KEYDOWN) {
@@ -141,15 +233,16 @@ int main(int argc, char **argv) {
                DIGGER_AUDIO_SAMPLES_PER_FRAME * 2 * sizeof(int16_t));
     }
 
-    /* Create window: 320x200 client area + decorations */
+    /* Create window: 320x200 client area + title + menu + borders */
     int16_t fw = DIGGER_WIDTH + 2 * THEME_BORDER_WIDTH;
-    int16_t fh = DIGGER_HEIGHT + THEME_TITLE_HEIGHT + 2 * THEME_BORDER_WIDTH;
+    int16_t fh = DIGGER_HEIGHT + THEME_TITLE_HEIGHT + THEME_MENU_HEIGHT +
+                 2 * THEME_BORDER_WIDTH;
     int16_t x  = (DISPLAY_WIDTH - fw) / 2;
     int16_t y  = (DISPLAY_HEIGHT - TASKBAR_HEIGHT - fh) / 2;
     if (y < 0) y = 0;
 
     g_app->app_hwnd = wm_create_window(x, y, fw, fh, "Digger",
-                                         WSTYLE_DIALOG,
+                                         WSTYLE_DIALOG | WF_MENUBAR,
                                          digger_event, digger_paint);
     if (g_app->app_hwnd == HWND_NULL) {
         vPortFree(g_app->framebuffer);
@@ -162,6 +255,9 @@ int main(int argc, char **argv) {
     /* Store state in window user_data for paint callback */
     window_t *win = wm_get_window(g_app->app_hwnd);
     if (win) win->user_data = g_app;
+
+    /* Set up menu bar */
+    digger_setup_menu();
 
     wm_show_window(g_app->app_hwnd);
     wm_set_focus(g_app->app_hwnd);

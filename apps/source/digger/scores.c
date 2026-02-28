@@ -9,6 +9,42 @@
 #include "hardware/flash.h"
 #include "hardware/sync.h"
 #endif
+#if defined(_FRANKOS)
+/* FatFS for SD card high score storage.
+ * Can't include m-os-api-ff.h here because it conflicts with <stdio.h>.
+ * Use sys_table indices directly for the 4 functions we need. */
+#define M_OS_API_SYS_TABLE_BASE ((void*)(0x10000000ul + (16 << 20) - (4 << 10)))
+static const unsigned long * const _scores_sys = \
+    (const unsigned long * const)M_OS_API_SYS_TABLE_BASE;
+/* FIL is ~600 bytes; use opaque buffer to avoid pulling in full FatFS types */
+typedef unsigned char digger_fil_t[600];
+typedef unsigned int  UINT_t;
+typedef int           FRESULT_t;
+#define FR_OK_VAL 0
+#define FA_R  0x01
+#define FA_W  0x02
+#define FA_CA 0x08  /* CREATE_ALWAYS */
+static FRESULT_t dg_f_open(digger_fil_t *fp, const char *path, unsigned char mode) {
+    typedef FRESULT_t (*fn_t)(void*, const char*, unsigned char);
+    return ((fn_t)_scores_sys[46])(fp, path, mode);
+}
+static FRESULT_t dg_f_close(digger_fil_t *fp) {
+    typedef FRESULT_t (*fn_t)(void*);
+    return ((fn_t)_scores_sys[47])(fp);
+}
+static FRESULT_t dg_f_write(digger_fil_t *fp, const void *buf, UINT_t btw, UINT_t *bw) {
+    typedef FRESULT_t (*fn_t)(void*, const void*, UINT_t, UINT_t*);
+    return ((fn_t)_scores_sys[48])(fp, buf, btw, bw);
+}
+static FRESULT_t dg_f_read(digger_fil_t *fp, void *buf, UINT_t btr, UINT_t *br) {
+    typedef FRESULT_t (*fn_t)(void*, void*, UINT_t, UINT_t*);
+    return ((fn_t)_scores_sys[49])(fp, buf, btr, br);
+}
+static FRESULT_t dg_f_mkdir(const char *path) {
+    typedef FRESULT_t (*fn_t)(const char*);
+    return ((fn_t)_scores_sys[57])(path);
+}
+#endif
 #include "def.h"
 #include "scores.h"
 #include "main.h"
@@ -90,8 +126,17 @@ static void
 readscores(void)
 {
 #if defined(_FRANKOS)
-  /* FRANK OS: no persistent storage, start with empty scores */
+  /* FRANK OS: load scores from SD card if available */
   scorebuf[0] = 0;
+  {
+    digger_fil_t f;
+    if (dg_f_open(&f, "/tmp/digger.sco", FA_R) == FR_OK_VAL) {
+      UINT_t br;
+      dg_f_read(&f, scorebuf, 512, &br);
+      if (br < 512) scorebuf[0] = 0;
+      dg_f_close(&f);
+    }
+  }
 #elif defined(_RP2350)
   const uint8_t *flash_data = (const uint8_t *)SCORES_FLASH_ADDR;
   uint32_t magic;
@@ -128,8 +173,16 @@ static void
 writescores(void)
 {
 #if defined(_FRANKOS)
-  /* FRANK OS: no persistent storage */
-  (void)0;
+  /* FRANK OS: save scores to SD card */
+  {
+    dg_f_mkdir("/tmp");
+    digger_fil_t f;
+    if (dg_f_open(&f, "/tmp/digger.sco", FA_W | FA_CA) == FR_OK_VAL) {
+      UINT_t bw;
+      dg_f_write(&f, scorebuf, 512, &bw);
+      dg_f_close(&f);
+    }
+  }
 #elif defined(_RP2350)
   /* Write scores to flash. Core 1's code path is entirely in RAM
    * (__not_in_flash_func + __scratch_x DMA handler), so we only need

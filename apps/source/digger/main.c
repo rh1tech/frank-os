@@ -31,6 +31,9 @@ static const char copyright[]="Portions Copyright(c) 1983 Windmill Software Inc.
 #include "ini.h"
 #include "draw_api.h"
 #include "game.h"
+#if defined(_FRANKOS)
+#include "frankos_app.h"
+#endif
 
 static struct game
 {
@@ -288,7 +291,7 @@ int mainprog(void)
     frame=0;
     newframe();
     teststart();
-    while (!started) {
+    while (!started && !escape) {
       started=teststart();
       if (mode_change) {
         switchnplayers();
@@ -396,7 +399,16 @@ int mainprog(void)
       savedrf=false;
       continue;
     }
-#if defined(_RP2350) && !defined(_FRANKOS)
+#if defined(_FRANKOS)
+    if (escape) {
+      if (g_app && g_app->restart) {
+        g_app->restart = false;
+        escape = false;
+        continue;  /* Restart: return to title screen */
+      }
+      break;  /* Close: exit to OS */
+    }
+#elif defined(_RP2350)
     if (escape) {
       escape=false;
       continue;  /* No OS to quit to - return to title screen */
@@ -413,6 +425,13 @@ int mainprog(void)
       gotgame=false;
     }
     savedrf=false;
+#if defined(_FRANKOS)
+    if (g_app && g_app->restart) {
+      g_app->restart = false;
+      escape = false;
+      continue;  /* Restart: back to title screen */
+    }
+#endif
     escape=false;
 #if defined(_RP2350) && !defined(_FRANKOS)
   } while (1);  /* Never exit on RP2350 */

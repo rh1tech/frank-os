@@ -22,6 +22,7 @@
 #include <stdbool.h>
 
 #include "def.h"
+#include "sound.h"
 #include "game.h"
 #include "frankos_app.h"
 
@@ -48,11 +49,21 @@ void gethrt(bool minsleep) {
     if (!g_app)
         return;
 
-    /* Check if window is being closed */
-    if (g_app->closing) {
+    /* Check if window is being closed or restart requested */
+    if (g_app->closing || g_app->restart) {
         extern bool escape;
         escape = true;
         return;
+    }
+
+    /* Update menu checkmarks if sound/music state changed */
+    {
+        static bool prev_sound = true, prev_music = true;
+        if (soundflag != prev_sound || musicflag != prev_music) {
+            prev_sound = soundflag;
+            prev_music = musicflag;
+            digger_update_menu();
+        }
     }
 
     /* Trigger screen repaint first, before audio blocks for pacing */
