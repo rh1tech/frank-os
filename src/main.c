@@ -29,6 +29,7 @@
 #include "menu.h"
 #include "taskbar.h"
 #include "startmenu.h"
+#include "run_dialog.h"
 #include "file_assoc.h"
 #include "desktop.h"
 #include "sysmenu.h"
@@ -183,6 +184,13 @@ void vApplicationGetTimerTaskMemory(StaticTask_t **ppxTimerTaskTCBBuffer,
 
 /* Dirty flag — set by input_task, read by compositor_task (both on Core 0) */
 static volatile bool g_video_dirty = true;
+
+/* Deferred spawn/open flags — set by input_task, consumed by compositor_task.
+ * Avoids calling heavy WM/allocation functions from the small input_task stack
+ * and prevents races with the compositor. */
+static volatile bool g_spawn_terminal_pending  = false;
+static volatile bool g_spawn_navigator_pending = false;
+static volatile bool g_open_run_dialog_pending = false;
 
 /* Boot cursor state: cursor is hidden after the hourglass timeout until
  * the user first moves the mouse.  Non-static so wm_composite can skip
@@ -377,6 +385,22 @@ static void compositor_task(void *params) {
 
         /* Check for deferred start menu actions (dialog confirmations) */
         startmenu_check_pending();
+        run_dialog_check_pending();
+
+        /* Deferred spawns from input_task hotkeys — handled here on the
+         * compositor task so WM calls are always on the right task/stack. */
+        if (g_spawn_terminal_pending) {
+            g_spawn_terminal_pending = false;
+            spawn_terminal_window();
+        }
+        if (g_spawn_navigator_pending) {
+            g_spawn_navigator_pending = false;
+            spawn_filemanager_window();
+        }
+        if (g_open_run_dialog_pending) {
+            g_open_run_dialog_pending = false;
+            run_dialog_open();
+        }
 
         /* Recomposite when input arrives OR when windows are
          * invalidated (e.g. terminal output, cursor blink).
@@ -426,33 +450,57 @@ static void input_task(void *params) {
         keyboard_poll();
 
         key_event_t kev;
+        /* Track Win key: only toggle start menu if released with no combo */
+        static bool win_combo_used = false;
+
         while (keyboard_get_event(&kev)) {
-            /* Intercept Win+T: spawn a new terminal window
-             * hid_code uses HID usage codes, not PS/2 scancodes */
+            /* Intercept Win+T: spawn a new terminal window (deferred).
+             * Heavy WM/alloc calls run on compositor task, not here. */
             if (kev.pressed &&
                 (kev.modifiers & (KBD_MOD_LGUI | KBD_MOD_RGUI)) &&
                 kev.hid_code == 0x17 /* HID_KEY_T */) {
-                spawn_terminal_window();
+                win_combo_used = true;
+                g_spawn_terminal_pending = true;
                 g_video_dirty = true;
                 continue;
             }
 
-            /* Win+E: open file manager */
+            /* Win+E: open Navigator (deferred) */
             if (kev.pressed &&
                 (kev.modifiers & (KBD_MOD_LGUI | KBD_MOD_RGUI)) &&
                 kev.hid_code == 0x08 /* HID_KEY_E */) {
-                spawn_filemanager_window();
+                win_combo_used = true;
+                g_spawn_navigator_pending = true;
                 g_video_dirty = true;
                 continue;
             }
 
-            /* Win key (alone): toggle start menu
+            /* Win+R: open Run dialog (deferred) */
+            if (kev.pressed &&
+                (kev.modifiers & (KBD_MOD_LGUI | KBD_MOD_RGUI)) &&
+                kev.hid_code == 0x15 /* HID_KEY_R */) {
+                win_combo_used = true;
+                g_open_run_dialog_pending = true;
+                g_video_dirty = true;
+                continue;
+            }
+
+            /* Win key pressed: just arm the start menu, don't fire yet.
              * HID GUI key codes: LGUI=0xE3, RGUI=0xE7 */
             if (kev.pressed &&
-                (kev.hid_code == 0xE3 || kev.hid_code == 0xE7) &&
-                !(kev.modifiers & ~(KBD_MOD_LGUI | KBD_MOD_RGUI))) {
-                startmenu_toggle();
-                g_video_dirty = true;
+                (kev.hid_code == 0xE3 || kev.hid_code == 0xE7)) {
+                win_combo_used = false;    /* reset — fresh press */
+                continue;
+            }
+
+            /* Win key released: toggle start menu only if no combo was used */
+            if (!kev.pressed &&
+                (kev.hid_code == 0xE3 || kev.hid_code == 0xE7)) {
+                if (!win_combo_used) {
+                    startmenu_toggle();
+                    g_video_dirty = true;
+                }
+                win_combo_used = false;
                 continue;
             }
 
@@ -806,7 +854,7 @@ int main(void) {
 
     xTaskCreate(usb_service_task, "usb", 256, NULL, configMAX_PRIORITIES - 1, NULL);
     xTaskCreate(input_task, "input", 1024, NULL, 3, NULL);
-    xTaskCreate(compositor_task, "compositor", 1024, NULL, 2, NULL);
+    xTaskCreate(compositor_task, "compositor", 4096, NULL, 2, NULL);
 
     // xTaskCreate leaves BASEPRI raised (ulCriticalNesting = 0xaaaaaaaa by design).
     // Clear it so printf works before the scheduler starts.

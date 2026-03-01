@@ -4,7 +4,9 @@
 #include "pico/stdio.h"
 #endif
 
-#include "stdio.h"
+#ifndef PSHELL_FRANKOS
+#include <stdio.h>
+#endif
 
 #ifndef PSHELL_FRANKOS
 #include "io.h"

@@ -8,16 +8,22 @@
  *
  */
 
+#ifdef PSHELL_FRANKOS
+// FRANK OS compat layer — must be included FIRST to avoid header conflicts
+#include "pshell_compat.h"
+#endif
+
 // clib functions
 #include <fcntl.h>
 #include <limits.h>
-#include <math.h>
 #include <setjmp.h>
 #include <stdarg.h>
+#ifndef PSHELL_FRANKOS
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
-// pico SDK hardware support functions (always needed for cc_extrns.h)
+// pico SDK hardware support functions (needed for cc_extrns.h)
 #include <hardware/adc.h>
 #include <hardware/clocks.h>
 #include <hardware/gpio.h>
@@ -30,14 +36,8 @@
 
 // pico SDK functions
 #include <pico/rand.h>
-#ifndef PSHELL_FRANKOS
 #include <pico/stdio.h>
-#endif
 #include <pico/time.h>
-
-// FRANK OS compat layer (after pico headers so macros override properly)
-#ifdef PSHELL_FRANKOS
-#include "pshell_compat.h"
 #endif
 
 // disassembler, compiler, and file system functions
@@ -53,15 +53,14 @@
 // limited and not for normal use
 #define EXE_DBG 0
 
-// Uninitialized global data section
-#define UDATA __attribute__((section(".ccudata")))
+// Uninitialized global data section — cc.h defines UDATA based on PSHELL_FRANKOS
 
 #define K 1024 // one kilobyte
 
 #define DATA_BYTES (16 * K)       // data segment size
 #define TEXT_BYTES (16 * K)       // code segment size
 #define TS_TBL_BYTES (2 * K)      // type size table size (released at run time)
-#define AST_TBL_BYTES (32 * K)    // abstract syntax table size (released at run time)
+#define AST_TBL_BYTES (16 * K)    // abstract syntax table size (released at run time)
 #define MEMBER_DICT_BYTES (4 * K) // struct member table size (released at run time)
 
 #define CTLC 3 // control C ascii character
@@ -82,7 +81,11 @@ extern char* full_path(char* name);                  // expand file name to full
 extern int cc_printf(void* stk, int wrds, int prnt); // shim for printf and sprintf
 extern void get_screen_xy(int* x, int* y);           // retrieve screem dimensions
 extern void cc_exit(int rc);                         // C exit function
+#ifdef PSHELL_FRANKOS
+static char *__StackLimit;                           // malloc'd code/data buffer
+#else
 extern char __StackLimit[];                          // start of code segment
+#endif
 
 const uint32_t prog_space = TEXT_BYTES;
 const uint32_t data_space = DATA_BYTES;
@@ -438,7 +441,9 @@ static int wrap_screen_width(void) {
     return x;
 }
 
+#ifndef PSHELL_FRANKOS
 static void wrap_wfi(void) { __wfi(); };
+#endif
 
 #ifdef PSHELL_FRANKOS
 // Wrapper functions for cc_extrns.h under FRANK OS.
@@ -4210,9 +4215,34 @@ struct exe_s {
 // or loader mode (mode = 1)
 int cc(int mode, int argc, char** argv) {
 
+#ifdef PSHELL_FRANKOS
+    /* Zero all UDATA globals (cc.c + cc_malloc.c). With the native build
+     * the custom .ccudata section is bulk-zeroed via linker symbols; for
+     * FRANK OS we zero each variable explicitly since -r linking can't
+     * provide section boundary symbols. */
+    relocs = NULL; nrelocs = 0; p = lp = NULL; data = data_base = NULL;
+    base_sp = NULL; le = NULL; ecas = NULL; ncas = NULL; def = NULL;
+    brks = cnts = pcrel = NULL; pcrel_1st = NULL; pcrel_count = 0;
+    swtc = brkc = cntc = 0; tsize = NULL; tnew = 0; tk = ty = 0;
+    compound = 0; rtf = rtt = 0; loc = lineno = 0;
+    src_opt = nopeep_opt = uchar_opt = 0; n = NULL; ld = 0;
+    pplev = pplevt = 0; ast = NULL; memset(&state, 0, sizeof(state));
+    ofn = NULL; indef = 0; src_base = NULL;
+    id = sym_base = NULL; members = NULL;
+    memset(&done_jmp, 0, sizeof(done_jmp));
+    file_list = NULL; fd = NULL; fp = NULL;
+    cc_malloc_reset();
+    // Allocate code/data buffer on first use
+    if (!__StackLimit) __StackLimit = malloc(TEXT_BYTES + DATA_BYTES);
+    if (!__StackLimit) {
+        printf("cc: out of memory (need %d bytes)\n", TEXT_BYTES + DATA_BYTES);
+        return -1;
+    }
+#else
     // clear uninitialized global variables
     extern char __ccudata_start__, __ccudata_end__;
     memset(&__ccudata_start__, 0, &__ccudata_end__ - &__ccudata_start__);
+#endif
     extern const char* pshell_version;
     int rslt = -1;
     struct exe_s exe;

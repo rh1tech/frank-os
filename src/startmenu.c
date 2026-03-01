@@ -23,6 +23,7 @@
 #include "desktop.h"
 #include "snd.h"
 #include "ff.h"
+#include "run_dialog.h"
 #include "hardware/watchdog.h"
 #include <string.h>
 #include <stdio.h>
@@ -35,6 +36,7 @@
 #define SM_ID_TERMINAL      1
 #define SM_ID_REBOOT        2
 #define SM_ID_FIRMWARE      3
+#define SM_ID_RUN           4
 
 /* Right-click context popup state (drawn inside startmenu, not popup menu) */
 static bool    sm_ctx_open    = false;
@@ -59,6 +61,7 @@ typedef struct {
 static const sm_item_t sm_items[] = {
     { "Programs",  0,               false, true  },
     { "Firmware",  SM_ID_FIRMWARE,  true,  true  },
+    { "Run...",    SM_ID_RUN,       true,  false },
     { "Reboot",    SM_ID_REBOOT,    true,  false },
 };
 #define SM_ITEM_COUNT  (sizeof(sm_items) / sizeof(sm_items[0]))
@@ -383,6 +386,9 @@ static void execute_item(uint8_t id) {
     switch (id) {
     case SM_ID_TERMINAL:
         spawn_terminal_window();
+        break;
+    case SM_ID_RUN:
+        run_dialog_open();
         break;
     case SM_ID_REBOOT:
         pending_action = PENDING_REBOOT;

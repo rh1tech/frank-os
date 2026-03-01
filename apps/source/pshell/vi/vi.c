@@ -13,8 +13,10 @@
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
+#ifndef PSHELL_FRANKOS
 #include <stdio.h>
 #include <string.h>
+#endif
 
 #ifdef PSHELL_FRANKOS
 #include "pshell_compat.h"
@@ -33,7 +35,11 @@ extern char* full_path(const char* name);
 
 #define ARRAY_SIZE(x) ((uint32_t)(sizeof(x) / sizeof((x)[0])))
 
+#ifdef PSHELL_FRANKOS
+#define UDATA
+#else
 #define UDATA __attribute__((section(".viudata")))
+#endif
 
 static jmp_buf die_jmp UDATA;
 
@@ -3718,8 +3724,34 @@ static void* xmalloc_open_read_close(const char* filename) {
 extern void get_screen_xy(uint32_t* x, uint32_t* y);
 
 int vi(int ac, char* argv[]) {
+#ifdef PSHELL_FRANKOS
+    /* Zero all UDATA globals explicitly for FRANK OS (-r can't provide
+     * section boundary symbols). */
+    memset(&die_jmp, 0, sizeof(die_jmp));
+    text = end = dot = NULL; text_size = 0; vi_setops = 0;
+    editing = cmd_mode = modified_count = 0; last_modified_count = -1;
+    cmdcnt = 0; rows = columns = 0; crow = ccol = offset = 0;
+    have_status_msg = last_status_cksum = 0;
+    current_filename = screenbegin = screen = NULL; screensize = 0;
+    tabstop = 0; last_search_char = 0; last_search_cmd = 0;
+    last_input_char = undo_queue_state = 0;
+    adding2q = 0; lmc_len = 0; ioq = ioq_start = NULL; dotcnt = 0;
+    last_search_pattern = NULL; indentcol = 0; cmd_error = 0;
+    edit_file_cur_line = NULL; refresh_old_offset = format_edit_status_tot = 0;
+    YDreg = 0; memset(reg, 0, sizeof(reg)); memset(regtype, 0, sizeof(regtype));
+    memset(mark, 0, sizeof(mark)); cindex = 0; keep_index = 0;
+    memset(readbuffer, 0, sizeof(readbuffer));
+    memset(status_buffer, 0, sizeof(status_buffer));
+    memset(last_modifying_cmd, 0, sizeof(last_modifying_cmd));
+    memset(get_input_line_buf, 0, sizeof(get_input_line_buf));
+    memset(scr_out_buf, 0, sizeof(scr_out_buf));
+    undo_stack_tail = NULL; undo_queue_spos = NULL; undo_q = 0;
+    memset(undo_queue, 0, sizeof(undo_queue));
+    argc = optind = 0;
+#else
     extern char __viudata_start__, __viudata_end__;
     memset(&__viudata_start__, 0, &__viudata_end__ - &__viudata_start__);
+#endif
     last_modified_count = -1;
     get_screen_xy(&columns, &rows);
     argc = ac;

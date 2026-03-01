@@ -17,12 +17,24 @@
 #include "m-os-api.h"
 
 /*
- * m-os-api.h defines '#define switch DO_NOT_USE_SWITCH' to prevent
- * jump tables in relocatable ELFs.  pshell uses switch extensively
- * (vi, readln, tar, armdisasm), so undo it.  The build already uses
- * -fno-jump-tables to achieve the same goal safely.
+ * m-os-api.h defines several macros that conflict with standard C headers
+ * and pshell's own implementations.  Undo them here:
+ *   switch    → prevents switch statements (we use -fno-jump-tables instead)
+ *   abs       → conflicts with <stdlib.h> declaration
+ *   printf    → routes to OS console; we route to VT100 instead
+ *   getchar   → routes to OS getch(); we route to VT100 input
+ *   putchar   → routes to OS putc(); we route to VT100 output
+ *   sleep_ms  → simple alias; we redefine with pdMS_TO_TICKS conversion
  */
 #undef switch
+#undef inline
+#undef __force_inline
+#undef abs
+#undef printf
+#undef getchar
+#undef putchar
+#undef puts
+#undef sleep_ms
 
 #include "frankos-app.h"
 #include "m-os-api-ff.h"
@@ -30,10 +42,26 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
-#include <string.h>
-#include <stdlib.h>
+/* Do NOT include <string.h> or <stdlib.h> here — they conflict with
+ * m-os-api.h's inline static redefinitions of strlen, atoi, malloc, etc.
+ * m-os-api.h and m-os-api-sdtfn.c provide most of what we need.
+ * Missing functions are declared below and implemented in pshell_libc.c. */
 #include <ctype.h>
 #include <stdarg.h>
+
+/* ── Declarations for C library functions not in m-os-api.h ───────────── */
+/* These are implemented in pshell_libc.c (separate TU, no m-os-api.h) */
+char *strchr(const char *s, int c);
+char *strrchr(const char *s, int c);
+char *strstr(const char *haystack, const char *needle);
+long  strtol(const char *s, char **end, int base);
+unsigned long strtoul(const char *s, char **end, int base);
+double strtod(const char *s, char **end);
+float  strtof(const char *s, char **end);
+long  atol(const char *s);
+double atof(const char *s);
+void *realloc(void *ptr, size_t size);
+char *strncat(char *d, const char *s, size_t n);
 
 /* ── Forward declarations for VT100 terminal ──────────────────────────── */
 void    vt100_putc(char c);
@@ -43,6 +71,7 @@ int     vt100_getch(void);
 int     vt100_getch_timeout(int us);
 void    vt100_ungetc(int c);
 void    vt100_get_size(int *cols, int *rows);
+void    vt100_input_flush(void);
 
 /* ── LittleFS type compatibility ──────────────────────────────────────── */
 
@@ -207,27 +236,27 @@ extern char __heap_end;
 
 /* ── stdio routing through VT100 ──────────────────────────────────────── */
 
-/* We can't #define printf because the compiler and other modules use it
- * for different purposes.  Instead, the compat .c file provides a
- * printf() implementation that routes through VT100.  The FRANK OS build
- * uses -fno-builtin-printf so our version wins. */
+/* These functions are implemented in pshell_compat.c, which routes all
+ * stdio through the VT100 terminal emulator.  The -fno-builtin-printf
+ * etc. flags ensure our versions win over compiler builtins. */
+int printf(const char *fmt, ...) __attribute__((__format__(__printf__, 1, 2)));
+int vprintf(const char *fmt, va_list ap);
+int putchar(int c);
+int puts(const char *s);
+int getchar(void);
 
-/* putchar → VT100 */
-static inline int pshell_putchar(int c) {
-    vt100_putc((char)c);
-    return c;
+/* sprintf — not provided by m-os-api.h (snprintf IS provided as a macro) */
+static inline int pshell_sprintf(char *str, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(str, 0x7FFF, fmt, ap);
+    va_end(ap);
+    return n;
 }
+#define sprintf pshell_sprintf
 
-/* puts → VT100 (with trailing newline) */
-static inline int pshell_puts(const char *s) {
-    vt100_puts_nl(s);
-    return 0;
-}
-
-/* getchar → VT100 blocking read */
-static inline int pshell_getchar(void) {
-    return vt100_getch();
-}
+/* sscanf — declare from toolchain's libc (linked, just need prototype) */
+int sscanf(const char *str, const char *fmt, ...);
 
 /* fflush → no-op */
 #define fflush(x)               ((void)0)

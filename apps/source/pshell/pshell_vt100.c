@@ -55,21 +55,33 @@ static int      vt_state;
 static int      csi_params[MAX_CSI_PARAMS];
 static int      csi_nparam;
 static int      csi_cur_param;
+static bool     csi_private;   /* '?' prefix in CSI sequence (DEC private) */
 
 /* Cursor blink state */
 static volatile bool cursor_visible;
+static volatile bool cursor_enabled;  /* DEC private mode ?25h/?25l */
 
 /* Window handle for invalidation */
 static hwnd_t   g_vt_hwnd;
 
+/* Dirty flag — batches wm_invalidate() calls */
+static volatile bool vt_dirty;
+
 /* Shadow buffer for dirty-cell paint optimisation */
 static uint8_t *shadow_buf;
-static uint8_t *last_fb_ptr;
+
+/* Cached framebuffer info — set by vt100_paint() (compositor task),
+ * used by flush_display()/toggle_cursor() for direct writes from
+ * the shell/timer tasks without going through wm_invalidate(). */
+static uint8_t *cached_fb;
+static int16_t  cached_stride;
+static int16_t  cached_clip_w;
+static int16_t  cached_clip_h;
 
 /* ── Input ring buffer ─────────────────────────────────────────────────── */
 static volatile uint8_t inbuf[VT100_INBUF_SIZE];
 static volatile int     in_head, in_tail;
-static SemaphoreHandle_t in_sem;  /* counting semaphore: count = available bytes */
+static TaskHandle_t     in_waiter;  /* task waiting for input (notified on push) */
 
 /* ═════════════════════════════════════════════════════════════════════════
  * Helpers
@@ -107,8 +119,76 @@ static void scroll_up(void) {
 }
 
 static void invalidate(void) {
-    if (g_vt_hwnd != 0)
+    vt_dirty = true;
+}
+
+/* Render a single cell directly to framebuffer.
+ * fb = base pointer from wd_fb_ptr(0,0), stride = row pitch in bytes.
+ * Uses 2-bit LUT for branch-free glyph rendering (ZX Spectrum technique). */
+static inline void render_cell(uint8_t *fb, int16_t stride,
+                                int row, int col,
+                                uint8_t ch, uint8_t eff_attr) {
+    uint8_t fg = eff_attr & 0x0Fu;
+    uint8_t bg = (eff_attr >> 4) & 0x0Fu;
+    const uint8_t *glyph = &font_8x16[(uint8_t)ch * VT100_FONT_H];
+    uint8_t lut[4] = {
+        (uint8_t)((bg << 4) | bg),   /* 00: bg bg */
+        (uint8_t)((fg << 4) | bg),   /* 01: fg bg */
+        (uint8_t)((bg << 4) | fg),   /* 10: bg fg */
+        (uint8_t)((fg << 4) | fg)    /* 11: fg fg */
+    };
+    int col_off = (col * VT100_FONT_W) / 2;
+    for (int gy = 0; gy < VT100_FONT_H; gy++) {
+        uint8_t bits = glyph[gy];
+        uint8_t *drow = fb + (row * VT100_FONT_H + gy) * stride + col_off;
+        drow[0] = lut[(bits >> 0) & 3];
+        drow[1] = lut[(bits >> 2) & 3];
+        drow[2] = lut[(bits >> 4) & 3];
+        drow[3] = lut[(bits >> 6) & 3];
+    }
+}
+
+/* Flush pending changes — render dirty cells directly to cached framebuffer.
+ * Falls back to wm_invalidate() if no cached pointer is available yet.
+ * Called from getch (natural end-of-output-burst) and cursor blink timer. */
+static void flush_display(void) {
+    if (!vt_dirty || g_vt_hwnd == 0) return;
+    vt_dirty = false;
+
+    uint8_t *fb = cached_fb;
+    if (!fb || !textbuf) {
+        /* No cached framebuffer yet — fall back to WM round-trip */
         wm_invalidate(g_vt_hwnd);
+        return;
+    }
+
+    int16_t stride = cached_stride;
+    int vis_cols = cached_clip_w / VT100_FONT_W;
+    int vis_rows = cached_clip_h / VT100_FONT_H;
+    if (vis_cols > tb_cols) vis_cols = tb_cols;
+    if (vis_rows > tb_rows) vis_rows = tb_rows;
+
+    for (int row = 0; row < vis_rows; row++) {
+        for (int col = 0; col < vis_cols; col++) {
+            int off = TB_OFF(row, col);
+            uint8_t ch   = textbuf[off];
+            uint8_t attr = textbuf[off + 1];
+
+            /* Apply cursor inversion */
+            bool is_cursor = (row == cursor_row && col == cursor_col
+                              && cursor_visible && cursor_enabled);
+            uint8_t eff_attr = is_cursor ? (uint8_t)((attr >> 4) | (attr << 4))
+                                         : attr;
+
+            /* Skip unchanged cells */
+            if (shadow_buf[off] == ch && shadow_buf[off + 1] == eff_attr)
+                continue;
+            shadow_buf[off]     = ch;
+            shadow_buf[off + 1] = eff_attr;
+
+            render_cell(fb, stride, row, col, ch, eff_attr);
+        }
+    }
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
@@ -300,6 +380,14 @@ static void csi_execute(char cmd) {
         for (int i = 0; i < n && cursor_col + i < tb_cols; i++)
             tb_put_char(cursor_row, cursor_col + i, ' ', attr);
     }
+    else if (cmd == 'h' && csi_private) {
+        /* DECSET — DEC private mode set */
+        if (p0 == 25) cursor_enabled = true;   /* ?25h = show cursor */
+    }
+    else if (cmd == 'l' && csi_private) {
+        /* DECRST — DEC private mode reset */
+        if (p0 == 25) cursor_enabled = false;  /* ?25l = hide cursor */
+    }
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
@@ -358,6 +446,7 @@ void vt100_putc(char c) {
             vt_state = ST_CSI_PARAM;
             csi_nparam = 0;
             csi_cur_param = 0;
+            csi_private = false;
             memset(csi_params, 0, sizeof(csi_params));
         } else {
             /* Unknown ESC sequence — ignore and return to normal */
@@ -371,6 +460,9 @@ void vt100_putc(char c) {
             if (csi_nparam < MAX_CSI_PARAMS)
                 csi_params[csi_nparam++] = csi_cur_param;
             csi_cur_param = 0;
+        } else if (uc == '?') {
+            /* DEC private mode prefix */
+            csi_private = true;
         } else if (uc >= 0x20 && uc <= 0x2F) {
             /* Intermediate bytes — transition to CSI_INTER */
             vt_state = ST_CSI_INTER;
@@ -426,8 +518,8 @@ void vt100_input_push(int c) {
         inbuf[in_head] = (uint8_t)(c & 0xFF);
         in_head = next;
     }
-    if (in_sem)
-        xSemaphoreGive(in_sem);
+    if (in_waiter)
+        xTaskNotifyGive(in_waiter);
 }
 
 void vt100_input_push_str(const char *s) {
@@ -436,34 +528,33 @@ void vt100_input_push_str(const char *s) {
 }
 
 int vt100_getch(void) {
-    /* Block until a character is available */
-    while (in_tail == in_head) {
-        if (in_sem)
-            xSemaphoreTake(in_sem, pdMS_TO_TICKS(100));
-        else
-            vTaskDelay(1);
-    }
+    /* Flush pending display updates before blocking */
+    flush_display();
+    while (in_tail == in_head)
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100));
     int c = inbuf[in_tail];
     in_tail = (in_tail + 1) % VT100_INBUF_SIZE;
     return c;
 }
 
 int vt100_getch_timeout(int us) {
+    /* Flush pending display updates */
+    flush_display();
     /* Check if data available */
     if (in_tail != in_head) {
         int c = inbuf[in_tail];
         in_tail = (in_tail + 1) % VT100_INBUF_SIZE;
         return c;
     }
+    /* Truly non-blocking when us <= 0 */
+    if (us <= 0)
+        return -1;
     /* Wait with timeout */
     int ticks = us / 1000;  /* microseconds to ms */
     if (ticks < 1) ticks = 1;
     ticks = pdMS_TO_TICKS(ticks);
     if (ticks < 1) ticks = 1;
-    if (in_sem)
-        xSemaphoreTake(in_sem, ticks);
-    else
-        vTaskDelay(ticks);
+    ulTaskNotifyTake(pdTRUE, ticks);
     if (in_tail != in_head) {
         int c = inbuf[in_tail];
         in_tail = (in_tail + 1) % VT100_INBUF_SIZE;
@@ -479,6 +570,15 @@ void vt100_ungetc(int c) {
         in_tail = prev;
         inbuf[in_tail] = (uint8_t)(c & 0xFF);
     }
+}
+
+void vt100_input_flush(void) {
+    /* Drain ring buffer */
+    in_head = in_tail = 0;
+    /* Clear any stale FreeRTOS task notifications so the next
+     * ulTaskNotifyTake blocks properly instead of returning stale counts */
+    if (in_waiter)
+        ulTaskNotifyTake(pdTRUE, 0);
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
@@ -512,19 +612,25 @@ void vt100_init(int cols, int rows) {
     bold_on = false;
     reverse_on = false;
     cursor_visible = true;
+    cursor_enabled = true;
+    vt_dirty = false;
     vt_state = ST_NORMAL;
-    last_fb_ptr = NULL;
+    cached_fb = NULL;
 
     /* Input ring buffer */
     in_head = 0;
     in_tail = 0;
-    in_sem = xSemaphoreCreateCounting(VT100_INBUF_SIZE, 0);
+    in_waiter = NULL;  /* Set by vt100_set_waiter() from shell task */
 }
 
 void vt100_destroy(void) {
     if (textbuf) { free(textbuf); textbuf = NULL; }
     if (shadow_buf) { free(shadow_buf); shadow_buf = NULL; }
-    if (in_sem) { vSemaphoreDelete(in_sem); in_sem = NULL; }
+    in_waiter = NULL;
+}
+
+void vt100_set_waiter(void *task_handle) {
+    in_waiter = (TaskHandle_t)task_handle;
 }
 
 void vt100_set_hwnd(hwnd_t hwnd) {
@@ -577,12 +683,18 @@ void vt100_resize(int cols, int rows) {
 
     if (cursor_col >= cols) cursor_col = cols - 1;
     if (cursor_row >= rows) cursor_row = rows - 1;
-    last_fb_ptr = NULL;
+    cached_fb = NULL;
 }
 
 void vt100_get_size(int *cols, int *rows) {
     *cols = tb_cols;
     *rows = tb_rows;
+}
+
+void vt100_invalidate(void) {
+    if (shadow_buf)
+        memset(shadow_buf, 0xFF, tb_cols * tb_rows * 2);
+    vt_dirty = true;
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
@@ -591,7 +703,11 @@ void vt100_get_size(int *cols, int *rows) {
 
 void vt100_toggle_cursor(void) {
     cursor_visible = !cursor_visible;
-    invalidate();
+    /* Mark dirty so flush_display() re-evaluates the cursor cell
+     * (shadow has old cursor state → comparison fails → cell re-rendered).
+     * Also flushes any pending text output. */
+    vt_dirty = true;
+    flush_display();
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
@@ -618,6 +734,13 @@ void vt100_paint(hwnd_t hwnd) {
     /* Compute visible area for clipping */
     int16_t clip_w, clip_h;
     wd_get_clip_size(&clip_w, &clip_h);
+
+    /* Cache framebuffer info for direct access from shell/timer tasks */
+    cached_fb      = dst;
+    cached_stride  = stride;
+    cached_clip_w  = clip_w;
+    cached_clip_h  = clip_h;
+
     int vis_cols = tb_cols;
     int vis_rows = tb_rows;
     if (vis_cols * VT100_FONT_W > clip_w)
@@ -630,54 +753,27 @@ void vt100_paint(hwnd_t hwnd) {
         return;
     }
 
-    /* Detect window move → force full repaint */
-    bool force = (dst != last_fb_ptr);
-    last_fb_ptr = dst;
-
+    /* Full repaint — WM triggered this (window move, expose, etc.) */
     for (int row = 0; row < vis_rows; row++) {
         for (int col = 0; col < vis_cols; col++) {
             int off = TB_OFF(row, col);
             uint8_t ch   = textbuf[off];
             uint8_t attr = textbuf[off + 1];
 
-            /* Cursor: invert fg/bg on current cell when visible */
-            bool cursor = (row == cursor_row && col == cursor_col && cursor_visible);
-            uint8_t eff_attr = cursor ? (uint8_t)((attr >> 4) | (attr << 4))
-                                      : attr;
+            /* Cursor: invert fg/bg on current cell when visible and enabled */
+            bool is_cursor = (row == cursor_row && col == cursor_col
+                              && cursor_visible && cursor_enabled);
+            uint8_t eff_attr = is_cursor ? (uint8_t)((attr >> 4) | (attr << 4))
+                                         : attr;
 
-            /* Skip unchanged cells */
-            int soff = (row * vis_cols + col) * 2;
-            if (soff + 1 < tb_cols * tb_rows * 2) {
-                if (!force &&
-                    shadow_buf[off] == ch &&
-                    shadow_buf[off + 1] == eff_attr)
-                    continue;
-                shadow_buf[off]     = ch;
-                shadow_buf[off + 1] = eff_attr;
-            }
+            /* Sync shadow buffer */
+            shadow_buf[off]     = ch;
+            shadow_buf[off + 1] = eff_attr;
 
-            uint8_t fg = eff_attr & 0x0Fu;
-            uint8_t bg = (eff_attr >> 4) & 0x0Fu;
-            const uint8_t *glyph = &font_8x16[(uint8_t)ch * VT100_FONT_H];
-
-            /* Render 8×16 glyph.
-             * Column pixel offset is col*8, always even → fast path. */
-            for (int gy = 0; gy < VT100_FONT_H; gy++) {
-                uint8_t bits = glyph[gy];
-                uint8_t *drow = dst
-                              + (row * VT100_FONT_H + gy) * stride
-                              + (col * VT100_FONT_W) / 2;
-
-                /* LSB = leftmost pixel: process 2 bits at a time → 4 bytes per row */
-                for (int bx = 0; bx < VT100_FONT_W / 2; bx++) {
-                    uint8_t left  = (bits & 0x01) ? fg : bg;
-                    uint8_t right = (bits & 0x02) ? fg : bg;
-                    *drow++ = (left << 4) | right;
-                    bits >>= 2;
-                }
-            }
+            render_cell(dst, stride, row, col, ch, eff_attr);
         }
     }
 
+    vt_dirty = false;
     wd_end();
 }

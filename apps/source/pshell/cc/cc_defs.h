@@ -18,6 +18,7 @@ static const struct define_grp stdio_defines[] = {
     {"PICO_ERROR_TIMEOUT", PICO_ERROR_TIMEOUT}, //
     {0}};
 
+#ifndef PSHELL_FRANKOS
 static const struct define_grp gpio_defines[] = {
     // GPIO
 #if PICO_RM2040
@@ -120,18 +121,6 @@ static const struct define_grp spi_defines[] = {
 #endif
     {0}};
 
-static const struct define_grp math_defines[] = {{0}};
-
-static const struct define_grp adc_defines[] = {{0}};
-
-static const struct define_grp stdlib_defines[] = {{0}};
-
-static const struct define_grp string_defines[] = {{0}};
-
-static const struct define_grp time_defines[] = {{0}};
-
-static const struct define_grp sync_defines[] = {{0}};
-
 static const struct define_grp irq_defines[] = {
     // IRQ
 #if PICO_RP2040
@@ -195,4 +184,25 @@ static const struct define_grp uart_defines[] = {
     {"uart0", ((uint32_t)uart0_hw)},
     {"uart1", ((uint32_t)uart1_hw)},
     {0}};
+
+static const struct define_grp adc_defines[] = {{0}};
+
+#else /* PSHELL_FRANKOS — hardware defines not available */
+
+static const struct define_grp gpio_defines[] = {{0}};
+static const struct define_grp pwm_defines[] = {{0}};
+static const struct define_grp clk_defines[] = {{0}};
+static const struct define_grp i2c_defines[] = {{0}};
+static const struct define_grp spi_defines[] = {{0}};
+static const struct define_grp irq_defines[] = {{0}};
+static const struct define_grp uart_defines[] = {{0}};
+static const struct define_grp adc_defines[] = {{0}};
+
+#endif /* PSHELL_FRANKOS */
+
+static const struct define_grp math_defines[] = {{0}};
+static const struct define_grp stdlib_defines[] = {{0}};
+static const struct define_grp string_defines[] = {{0}};
+static const struct define_grp time_defines[] = {{0}};
+static const struct define_grp sync_defines[] = {{0}};
 // clang-format on

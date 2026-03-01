@@ -13,7 +13,11 @@
 
 int cc(int mode, int argc, char* argv[]);
 
+#ifdef PSHELL_FRANKOS
+#define UDATA
+#else
 #define UDATA __attribute__((section(".ccudata")))
+#endif
 
 __attribute__((__noreturn__)) void run_fatal(const char* fmt, ...);
 __attribute__((__noreturn__)) void fatal_func(const char* func, int lne, const char* fmt, ...);

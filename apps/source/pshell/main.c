@@ -87,7 +87,8 @@ static bool pshell_event(hwnd_t hwnd, const window_event_t *event) {
             dialog_show(hwnd, "About PShell",
                         "PShell - Pico Shell for FRANK OS\n\n"
                         "Interactive shell, vi editor, C compiler\n"
-                        "Based on pshell by Thomas Edison",
+                        "Based on pshell by Thomas Edison\n\n"
+                        "(c) 2026 Mikhail Matveev",
                         DLG_ICON_INFO, DLG_BTN_OK);
             return true;
         }
@@ -106,6 +107,12 @@ static bool pshell_event(hwnd_t hwnd, const window_event_t *event) {
         if (new_rows > VT100_MAX_ROWS) new_rows = VT100_MAX_ROWS;
         vt100_resize(new_cols, new_rows);
         wm_invalidate(g_hwnd);
+        return true;
+    }
+
+    if (event->type == WM_SETFOCUS) {
+        vt100_invalidate();
+        wm_invalidate(hwnd);
         return true;
     }
 
@@ -201,6 +208,9 @@ static void blink_cb(TimerHandle_t t) {
 static void shell_task_fn(void *param) {
     (void)param;
 
+    /* Register this task as the input waiter so vt100_getch() works */
+    vt100_set_waiter(xTaskGetCurrentTaskHandle());
+
     pshell_main();
 
     /* Shell exited — signal close */
@@ -267,8 +277,9 @@ int main(int argc, char **argv) {
     if (blink_tmr)
         xTimerStart(blink_tmr, 0);
 
-    /* Start shell in a separate task (8K stack) */
-    xTaskCreate(shell_task_fn, "pshell", 8192, NULL,
+    /* Start shell in a separate task (4K words = 16KB stack).
+     * Keep this lean — FreeRTOS heap is only 128KB and cc needs ~82KB. */
+    xTaskCreate(shell_task_fn, "pshell", 4096, NULL,
                 tskIDLE_PRIORITY + 1, &g_shell_task);
 
     /* Main loop — block until close */

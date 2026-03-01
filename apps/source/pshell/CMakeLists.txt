@@ -1,90 +1,102 @@
+set(PICO_BOARD pico2 CACHE STRING "Board type")
+
 cmake_minimum_required(VERSION 3.13)
+include(pico_sdk_import.cmake)
 
-option(USB_CONSOLE "build for USB console, otherwise UART" ON)
-option(FORCE_TESTS "build release with tests cmd" OFF)
-
-set(CMAKE_C_STANDARD 11)
-set(CMAKE_CXX_STANDARD 17)
-
-include($ENV{PICO_SDK_PATH}/external/pico_sdk_import.cmake)
-
-set(PSHELL pshell)
-
-project(${PSHELL} C CXX ASM)
-
+project(pshell C CXX ASM)
 pico_sdk_init()
 
-find_package(Git REQUIRED)
-execute_process(
-    COMMAND git describe
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    OUTPUT_VARIABLE PSHELL_GIT_TAG
-)
+set(CMAKE_C_STANDARD 11)
 
-add_subdirectory(littlefs)
-add_subdirectory(disassembler)
-add_subdirectory(vi)
-add_subdirectory(cc)
-add_subdirectory(misc)
-add_subdirectory(xymodem)
+set(COMPILED_DIR "${CMAKE_SOURCE_DIR}/../../compiled")
 
-if ("${PICO_BOARD}" STREQUAL "vgaboard")
-    add_subdirectory(sdio)
-else()
-    add_subdirectory(flashio)
-endif()
-
-add_executable(${PSHELL}
+add_executable(${PROJECT_NAME}
+    main.c
+    pshell_vt100.c
+    pshell_compat.c
+    pshell_libc.c
+    pshell_setjmp.S
     shell.c
+    cc/cc.c
+    cc/cc_malloc.c
+    cc/cc_peep.c
+    cc/cc_printf.S
+    vi/vi.c
+    misc/readln.c
+    misc/tar.c
+    disassembler/armdisasm.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../src/font8x16.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../api/m-os-api-sdtfn.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../api/m-os-api-math.c
 )
 
-target_compile_definitions(${PSHELL} PUBLIC
+target_include_directories(${PROJECT_NAME} BEFORE PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../api
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../src
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../api/FreeRTOS
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../api
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/vi
+    ${CMAKE_CURRENT_SOURCE_DIR}/misc
+    ${CMAKE_CURRENT_SOURCE_DIR}/disassembler
+)
+
+target_link_options(${PROJECT_NAME} PRIVATE
+    -Xlinker
+    --print-memory-usage
+    -r
+)
+
+if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+target_compile_options(${PROJECT_NAME} PUBLIC
+    -fno-builtin-printf
+    -fno-builtin-putchar
+    -fno-builtin-puts
+    -fno-builtin-getchar
+    -fno-jump-tables
+    -Werror=implicit-function-declaration
+    -include _ansi.h
+)
+endif()
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    configSTACK_DEPTH_TYPE=uint32_t
+    PSHELL_FRANKOS=1
+    PICO_RP2350=1
+    PICO_RP2040=0
+    PSHELL_GIT_TAG="frankos"
     PICO_MALLOC_PANIC=0
-    PSHELL_GIT_TAG=\"${PSHELL_GIT_TAG}\"
+    NDEBUG=1
 )
 
-if (FORCE_TESTS)
-    target_compile_definitions(${PSHELL} PUBLIC PSHELL_TESTS)
-endif()
+pico_enable_stdio_uart(${PROJECT_NAME} 0)
+pico_enable_stdio_usb(${PROJECT_NAME} 0)
 
-if ("${PICO_BOARD}" STREQUAL "pico2")
-    pico_set_linker_script(${PSHELL} ${CMAKE_CURRENT_LIST_DIR}/misc/pshell_2350.ld)
-else()
-    pico_set_linker_script(${PSHELL} ${CMAKE_CURRENT_LIST_DIR}/misc/pshell_2040.ld)
-endif()
+# ── Icon + .inf generation ───────────────────────────────────────────────────
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
-if (USB_CONSOLE)
-    pico_enable_stdio_uart(${PSHELL} 0)
-    pico_enable_stdio_usb(${PSHELL} 1)
-else()
-    pico_enable_stdio_uart(${PSHELL} 1)
-    pico_enable_stdio_usb(${PSHELL} 0)
-endif()
+set(ICON_ICO "${CMAKE_CURRENT_SOURCE_DIR}/../../../assets/icons/w2k_ms-dos_application.ico")
+set(CONVERT_ICO_16 "${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/convert_ico_16.py")
 
-pico_set_program_name(${PSHELL} "pshell")
-pico_set_program_version(${PSHELL} "${PSHELL_GIT_TAG}")
+add_custom_command(
+    OUTPUT "${CMAKE_BINARY_DIR}/pshell.inf"
+    COMMAND ${Python3_EXECUTABLE} "${CONVERT_ICO_16}"
+        --inf
+        "PShell" "${ICON_ICO}"
+        "${CMAKE_BINARY_DIR}/pshell.inf"
+    DEPENDS "${CONVERT_ICO_16}" "${ICON_ICO}"
+    COMMENT "Generating pshell.inf with embedded icon"
+)
+add_custom_target(pshell_inf ALL
+    DEPENDS "${CMAKE_BINARY_DIR}/pshell.inf"
+)
 
-target_link_libraries(${PSHELL} PUBLIC
-    littlefs disassembler io vi cc misc xymodem
-    pico_stdlib pico_rand
-    hardware_flash hardware_sync hardware_watchdog hardware_timer hardware_gpio
-    hardware_pwm hardware_adc hardware_clocks hardware_uart hardware_i2c
-    hardware_spi hardware_irq hardware_dma hardware_uart)
-
-pico_add_extra_outputs(${PSHELL})
-
-message("-----------------------------------------------------")
-message("-- CMake ${CMAKE_VERSION}")
-message("-- Build ${CMAKE_BUILD_TYPE} / ${CMAKE_SYSTEM_NAME}")
-if (USB_CONSOLE)
-message("-- USB_CONSOLE ${USB_CONSOLE}, using USB")
-else()
-message("-- USB_CONSOLE ${USB_CONSOLE}, using UART")
-endif()
-if ("${PICO_BOARD}" STREQUAL "vgaboard")
-message("-- building for ${PICO_BOARD}, using SD card file system")
-else()
-message("-- building for ${PICO_BOARD}, using flash file system")
-endif()
-message("-----------------------------------------------------")
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_OBJCOPY} --strip-debug
+        $<TARGET_FILE:${PROJECT_NAME}>
+        ${COMPILED_DIR}/pshell
+    COMMAND ${CMAKE_COMMAND} -E copy
+        "${CMAKE_BINARY_DIR}/pshell.inf"
+        ${COMPILED_DIR}/pshell.inf
+)

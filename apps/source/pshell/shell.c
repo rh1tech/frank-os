@@ -9,7 +9,9 @@
 #include <ctype.h>
 #include <errno.h>
 #include <stdarg.h>
+#ifndef PSHELL_FRANKOS
 #include <stdio.h>
+#endif
 
 #ifdef PSHELL_FRANKOS
 #include "pshell_compat.h"
@@ -801,6 +803,9 @@ static void cc_cmd(void) {
     if (check_mount(true))
         return;
     cc(0, argc, argv);
+#ifdef PSHELL_FRANKOS
+    vt100_input_flush();
+#endif
 }
 
 static void tar_cmd(void) {
@@ -821,6 +826,9 @@ static void vi_cmd(void) {
     if (check_mount(true))
         return;
     vi(argc - 1, argv + 1);
+#ifdef PSHELL_FRANKOS
+    vt100_input_flush();
+#endif
 }
 
 #define NORETURN __attribute__((noreturn))
@@ -1065,6 +1073,9 @@ static bool run_as_cmd(const char* dir) {
     }
     argv[0] = fn;
     cc(1, argc, argv);
+#ifdef PSHELL_FRANKOS
+    vt100_input_flush();
+#endif
     free(fn);
     return true;
 }

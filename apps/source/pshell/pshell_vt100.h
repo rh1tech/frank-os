@@ -57,7 +57,16 @@ void    vt100_get_size(int *cols, int *rows);
 /* ── Cursor blink ─────────────────────────────────────────────────────── */
 void    vt100_toggle_cursor(void);
 
+/* ── Invalidate shadow buffer (force full repaint on next paint) ──────── */
+void    vt100_invalidate(void);
+
+/* ── Flush input buffer and clear stale notifications ─────────────────── */
+void    vt100_input_flush(void);
+
 /* ── Window handle (set by main.c after window creation) ──────────────── */
 void    vt100_set_hwnd(hwnd_t hwnd);
+
+/* ── Input waiter task (call from shell task to enable notify-based I/O) ─ */
+void    vt100_set_waiter(void *task_handle);
 
 #endif /* PSHELL_VT100_H */

@@ -7,9 +7,11 @@
 #include <pico/stdio.h>
 #include <pico/stdlib.h>
 #endif
+#ifndef PSHELL_FRANKOS
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#endif
 
 #ifndef PSHELL_FRANKOS
 #include "io.h"

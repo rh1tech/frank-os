@@ -1,8 +1,14 @@
+#ifdef PSHELL_FRANKOS
+#include "pshell_compat.h"
+#else
+#include <pico/stdlib.h>
+#endif
+
 #include <stdarg.h>
+#ifndef PSHELL_FRANKOS
 #include <stdlib.h>
 #include <string.h>
-
-#include <pico/stdlib.h>
+#endif
 
 #include "cc.h"
 #include "cc_malloc.h"
@@ -12,9 +18,13 @@ typedef struct qentry_s {
     char data[0];
 } qentry_t;
 
-#define UDATA __attribute__((section(".ccudata")))
-
 static qentry_t malloc_list UDATA; // list of allocated memory blocks
+
+#ifdef PSHELL_FRANKOS
+void cc_malloc_reset(void) {
+    memset(&malloc_list, 0, sizeof(malloc_list));
+}
+#endif
 
 // local memory management functions
 void* cc_malloc(int l, int cc, int zero) {

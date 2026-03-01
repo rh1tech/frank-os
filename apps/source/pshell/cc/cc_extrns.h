@@ -1,4 +1,5 @@
 // clang-format off
+#ifndef PSHELL_FRANKOS
     {"acosf", 1 | (1 << 5) | (1 << 10), math_defines, __wrap_acosf, 1},
     {"acoshf", 1 | (1 << 5) | (1 << 10), math_defines, __wrap_acoshf, 1},
     {"adc_fifo_drain", 0, adc_defines, adc_fifo_drain, 0},
@@ -21,8 +22,10 @@
     {"atan2f", 2 | (2 << 5) | (0b11 << 10), math_defines, atan2f, 1},
     {"atanf", 1 | (1 << 5) | (1 << 10), math_defines, __wrap_atanf, 1},
     {"atanhf", 1 | (1 << 5) | (1 << 10), math_defines, __wrap_atanhf, 1},
+#endif
     {"atoi", 1, stdlib_defines, atoi, 0},
     {"calloc", 2, stdlib_defines, wrap_calloc, 0},
+#ifndef PSHELL_FRANKOS
     {"clock_configure", 5, clk_defines, clock_configure, 0},
     {"clock_configure_gpin", 4, clk_defines, clock_configure_gpin, 0},
     {"clock_get_hz", 1, clk_defines, clock_get_hz, 0},
@@ -31,14 +34,21 @@
     {"clock_set_reported_hz", 2, clk_defines, clock_set_reported_hz, 0},
     {"clock_stop", 1, clk_defines, clock_stop, 0},
     {"clocks_enable_resus", 1, clk_defines, clocks_enable_resus, 0},
+#endif
     {"close", 1, stdio_defines, wrap_close, 0},
+#ifndef PSHELL_FRANKOS
     {"cosf", 1 | (1 << 5) | (1 << 10), math_defines, __wrap_cosf, 1},
     {"coshf", 1 | (1 << 5) | (1 << 10), math_defines, __wrap_coshf, 1},
+#endif
     {"exit", 1, stdlib_defines, cc_exit, 0},
+#ifndef PSHELL_FRANKOS
     {"fmodf", 2 | (2 << 5) | (0b11 << 10), math_defines, fmodf, 1},
+#endif
     {"free", 1, stdlib_defines, wrap_free, 0},
+#ifndef PSHELL_FRANKOS
     {"frequency_count_khz", 1, clk_defines, frequency_count_khz, 0},
     {"frequency_count_mhz", 1, clk_defines, frequency_count_mhz, 0},
+#endif
     {"get_rand_32", 0, stdlib_defines, get_rand_32, 0},
 #ifdef PSHELL_FRANKOS
     {"getchar", 0, stdio_defines, wrap_getchar, 0},
@@ -47,6 +57,7 @@
     {"getchar", 0, stdio_defines, getchar, 0},
     {"getchar_timeout_us", 1, stdio_defines, getchar_timeout_us, 0},
 #endif
+#ifndef PSHELL_FRANKOS
     {"gpio_acknowledge_irq", 2, gpio_defines, gpio_acknowledge_irq, 0},
     {"gpio_add_raw_irq_handler", 2, gpio_defines, gpio_add_raw_irq_handler, 0},
     {"gpio_add_raw_irq_handler_masked", 2, gpio_defines, gpio_add_raw_irq_handler_masked, 0},
@@ -135,6 +146,7 @@
     {"irq_set_priority", 2, irq_defines, irq_set_priority, 0},
     {"log10f", 1 | (1 << 5) | (1 << 10), math_defines, log10f, 1},
     {"logf", 1 | (1 << 5) | (1 << 10), math_defines, logf, 1},
+#endif
     {"lseek", 3, stdio_defines, wrap_lseek, 0},
     {"malloc", 1, stdlib_defines, wrap_malloc, 0},
     {"memcmp", 3, string_defines, memcmp, 0},
@@ -143,13 +155,16 @@
     {"open", 2, stdio_defines, wrap_open, 0},
     {"opendir", 1, stdio_defines, wrap_opendir, 0},
     {"popcount", 1, stdlib_defines, wrap_popcount, 0},
+#ifndef PSHELL_FRANKOS
     {"powf", 2 | (2 << 5) | (0b11 << 10), math_defines, powf, 1},
+#endif
     {"printf", 1, stdio_defines, x_printf, 0},
 #ifdef PSHELL_FRANKOS
     {"putchar", 1, stdio_defines, wrap_putchar_frankos, 0},
 #else
     {"putchar", 1, stdio_defines, putchar, 0},
 #endif
+#ifndef PSHELL_FRANKOS
     {"pwm_advance_count", 1, pwm_defines, pwm_advance_count, 0},
     {"pwm_clear_irq", 1, pwm_defines, pwm_clear_irq, 0},
     {"pwm_config_set_clkdiv", 2 | (1 << 5) | (0b01 << 10), pwm_defines, pwm_config_set_clkdiv, 0},
@@ -182,6 +197,7 @@
     {"pwm_set_output_polarity", 3, pwm_defines, pwm_set_output_polarity, 0},
     {"pwm_set_phase_correct", 2, pwm_defines, pwm_set_phase_correct, 0},
     {"pwm_set_wrap", 2, pwm_defines, pwm_set_wrap, 0},
+#endif
     {"rand", 0, stdlib_defines, rand, 0},
     {"read", 3, stdio_defines, wrap_read, 0},
     {"readdir", 2, stdio_defines, wrap_readdir, 0},
@@ -189,8 +205,10 @@
     {"rename", 2, stdio_defines, wrap_rename, 0},
     {"screen_height", 0, stdio_defines, wrap_screen_height, 0},
     {"screen_width", 0, stdio_defines, wrap_screen_width, 0},
+#ifndef PSHELL_FRANKOS
     {"sinf", 1 | (1 << 5) | (1 << 10), math_defines, __wrap_sinf, 1},
     {"sinhf", 1 | (1 << 5) | (1 << 10), math_defines, __wrap_sinhf, 1},
+#endif
 #ifdef PSHELL_FRANKOS
     {"sleep_ms", 1, time_defines, wrap_sleep_ms, 0},
 #else
@@ -201,6 +219,7 @@
 #else
     {"sleep_us", 1, time_defines, sleep_us, 0},
 #endif
+#ifndef PSHELL_FRANKOS
     {"spi_deinit", 1, spi_defines, spi_deinit, 0},
     {"spi_get_baudrate", 1, spi_defines, spi_get_baudrate, 0},
     {"spi_get_const_hw", 1, spi_defines, spi_get_const_hw, 0},
@@ -220,12 +239,15 @@
     {"spi_write16_read16_blocking", 4, spi_defines, spi_write16_read16_blocking, 0},
     {"spi_write_blocking", 3, spi_defines, spi_write_blocking, 0},
     {"spi_write_read_blocking", 4, spi_defines, spi_write_read_blocking, 0},
+#endif
     {"sprintf", 1, stdio_defines, x_sprintf, 0},
+#ifndef PSHELL_FRANKOS
 #if PICO_RP2040
     {"sqrtf", 1 | (1 << 5) | (1 << 10), math_defines, sqrtf, 1},
 #endif
 #if PICO_RP2350
     {"sqrtf", 1 | (1 << 5) | (1 << 10), math_defines, 0, 1},
+#endif
 #endif
     {"srand", 1, stdlib_defines, srand, 0},
     {"strcat", 2, string_defines, strcat, 0},
@@ -239,9 +261,12 @@
     {"strncpy", 3, string_defines, strncpy, 0},
     {"strrchr", 2, string_defines, strrchr, 0},
     {"strtol", 3, string_defines, strtol, 0},
+#ifndef PSHELL_FRANKOS
     {"tanf", 1 | (1 << 5) | (1 << 10), math_defines, __wrap_tanf, 1},
     {"tanhf", 1 | (1 << 5) | (1 << 10), math_defines, __wrap_tanhf, 1},
+#endif
     {"time_us_32", 0, time_defines, time_us_32, 0},
+#ifndef PSHELL_FRANKOS
     {"uart_default_tx_wait_blocking", 0, uart_defines,uart_default_tx_wait_blocking, 0},
     {"uart_deinit", 1, uart_defines, uart_deinit, 0},
 #if PICO_RP2040
@@ -253,9 +278,9 @@
     {"uart_get_index", 1, uart_defines, uart_get_index, 0},
     {"uart_get_instance", 1, uart_defines, uart_get_instance, 0},
 #if PICO_RP2040
-    {"uart_get_reset_num", 1, uart_defines, uart_get_instance, 0}, 
+    {"uart_get_reset_num", 1, uart_defines, uart_get_instance, 0},
 #else
-    {"uart_get_reset_num", 1, uart_defines, uart_get_reset_num, 0}, 
+    {"uart_get_reset_num", 1, uart_defines, uart_get_reset_num, 0},
 #endif
     {"uart_getc", 1, uart_defines, uart_getc, 0},
     {"uart_init",  2, uart_defines,uart_init, 0},
@@ -285,5 +310,6 @@
     {"user_irq_is_claimed", 1, irq_defines, user_irq_is_claimed, 0},
     {"user_irq_unclaim", 1, irq_defines, user_irq_unclaim, 0},
     {"wfi", 0, sync_defines, wrap_wfi, 0},
+#endif
     {"write", 3, stdio_defines, wrap_write, 0}
 // clang-format on

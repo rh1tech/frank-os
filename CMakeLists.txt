@@ -75,6 +75,7 @@ add_executable(frankos
     src/clipboard.c
     src/controls.c
     src/find_dialog.c
+    src/run_dialog.c
     src/swap.c
     src/alttab.c
     src/file_assoc.c

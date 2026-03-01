@@ -17,6 +17,9 @@ struct lfs_config fs_cfg;
 char __heap_start __attribute__((weak));
 char __heap_end   __attribute__((weak));
 
+/* ── Forward declarations ──────────────────────────────────────────── */
+static void make_xattr_path(char *out, const char *path, uint8_t type);
+
 /* ── Helper: map LittleFS open flags to FatFs mode ─────────────────── */
 static BYTE lfs_flags_to_fatfs(int flags) {
     BYTE mode = 0;
@@ -142,11 +145,24 @@ int fs_stat(const char *path, struct lfs_info *info) {
 
 int fs_remove(const char *path) {
     FRESULT fr = f_unlink(path);
+    if (fr == FR_OK) {
+        /* Clean up any sidecar attribute files */
+        char xpath[260];
+        make_xattr_path(xpath, path, 1);
+        f_unlink(xpath); /* ignore errors — sidecar may not exist */
+    }
     return (fr == FR_OK) ? LFS_ERR_OK : -(int)fr;
 }
 
 int fs_rename(const char *oldpath, const char *newpath) {
     FRESULT fr = f_rename(oldpath, newpath);
+    if (fr == FR_OK) {
+        /* Rename any sidecar attribute file too */
+        char oldxa[260], newxa[260];
+        make_xattr_path(oldxa, oldpath, 1);
+        make_xattr_path(newxa, newpath, 1);
+        f_rename(oldxa, newxa); /* ignore errors */
+    }
     return (fr == FR_OK) ? LFS_ERR_OK : -(int)fr;
 }
 
@@ -164,21 +180,48 @@ int fs_unload(void)  { return LFS_ERR_OK; }
 int fs_format(void)  { return LFS_ERR_OK; }
 int fs_gc(void)      { return LFS_ERR_OK; }
 
-/* ── Extended attributes (stubs — FatFs doesn't have LittleFS attrs) ── */
+/* ── Extended attributes via sidecar files ─────────────────────────── */
+/* LittleFS supports per-file extended attributes; FatFs does not.
+ * We emulate them with a tiny sidecar file: "<path>.xa<type>"
+ * e.g. fs_setattr("/bin/hello", 1, "exe", 4) writes to "/bin/hello.xa1" */
+
+static void make_xattr_path(char *out, const char *path, uint8_t type) {
+    /* Build "<path>.xa<type>" — type is a single digit (0-9) */
+    char *d = out;
+    while (*path) *d++ = *path++;
+    *d++ = '.'; *d++ = 'x'; *d++ = 'a';
+    *d++ = '0' + (type % 10);
+    *d = '\0';
+}
 
 int fs_getattr(const char *path, uint8_t type, void *buffer, uint32_t size) {
-    (void)path; (void)type; (void)buffer; (void)size;
-    /* Return negative = "no such attribute" — matches LittleFS behavior */
-    return -1;
+    char xpath[260];
+    make_xattr_path(xpath, path, type);
+    FIL f;
+    if (f_open(&f, xpath, FA_READ) != FR_OK)
+        return -1;
+    UINT br = 0;
+    f_read(&f, buffer, (UINT)size, &br);
+    f_close(&f);
+    return (int)br;
 }
 
 int fs_setattr(const char *path, uint8_t type, const void *buffer, uint32_t size) {
-    (void)path; (void)type; (void)buffer; (void)size;
-    return LFS_ERR_OK; /* silently succeed */
+    char xpath[260];
+    make_xattr_path(xpath, path, type);
+    FIL f;
+    if (f_open(&f, xpath, FA_WRITE | FA_CREATE_ALWAYS) != FR_OK)
+        return -1;
+    UINT bw = 0;
+    f_write(&f, buffer, (UINT)size, &bw);
+    f_close(&f);
+    return (bw == size) ? LFS_ERR_OK : -1;
 }
 
 int fs_removeattr(const char *path, uint8_t type) {
-    (void)path; (void)type;
+    char xpath[260];
+    make_xattr_path(xpath, path, type);
+    f_unlink(xpath);
     return LFS_ERR_OK;
 }
 
@@ -208,6 +251,14 @@ int fs_fs_size(void) {
 
 /* ── printf implementation routed through VT100 ───────────────────── */
 
+int vprintf(const char *fmt, va_list ap) {
+    char buf[512];
+    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    for (int i = 0; i < n && buf[i]; i++)
+        vt100_putc(buf[i]);
+    return n;
+}
+
 int printf(const char *fmt, ...) {
     char buf[512];
     va_list ap;
@@ -220,13 +271,39 @@ int printf(const char *fmt, ...) {
 }
 
 int putchar(int c) {
-    return pshell_putchar(c);
+    vt100_putc((char)c);
+    return c;
 }
 
 int puts(const char *s) {
-    return pshell_puts(s);
+    vt100_puts_nl(s);
+    return 0;
 }
 
 int getchar(void) {
-    return pshell_getchar();
+    return vt100_getch();
+}
+
+/* ── __wrap_printf / __wrap_sprintf (called by cc_printf.S) ────────── */
+/* The Pico SDK uses --wrap=printf to redirect printf calls.
+ * cc_printf.S explicitly calls __wrap_printf and __wrap_sprintf
+ * for compiled C programs' printf/sprintf support. */
+
+int __wrap_printf(const char *fmt, ...) {
+    char buf[512];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    for (int i = 0; i < n && buf[i]; i++)
+        vt100_putc(buf[i]);
+    return n;
+}
+
+int __wrap_sprintf(char *str, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(str, 0x7FFF, fmt, ap);
+    va_end(ap);
+    return n;
 }
