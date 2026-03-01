@@ -29,6 +29,8 @@
 #include "menu.h"
 #include "taskbar.h"
 #include "startmenu.h"
+#include "file_assoc.h"
+#include "desktop.h"
 #include "sysmenu.h"
 #include "filemanager.h"
 #include "cursor.h"
@@ -358,11 +360,13 @@ static void compositor_task(void *params) {
             boot_cursor_active = false;
             swap_init();
             startmenu_init();
+            file_assoc_scan();
+            desktop_init();
             taskbar_init();
             cursor_set_type(CURSOR_ARROW);
             cursor_overlay_erase();
             boot_cursor_hidden = true;
-            wm_mark_dirty();
+            wm_force_full_repaint();
         }
 
         /* Process deferred swap resumes — an exiting app sets a flag,

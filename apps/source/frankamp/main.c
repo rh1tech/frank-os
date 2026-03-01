@@ -1262,6 +1262,17 @@ static bool main_event(hwnd_t hwnd, const window_event_t *ev) {
         return false;
     }
 
+    /* ---- Drop files (file association / multi-open) ---- */
+    if (ev->type == WM_DROPFILES) {
+        if (ev->dropfiles.file_path) {
+            int idx = playlist_add(fa, ev->dropfiles.file_path);
+            if (idx >= 0 && fa->play_state == PS_STOPPED)
+                play_start(fa, idx);
+            wm_invalidate(hwnd);
+        }
+        return true;
+    }
+
     /* ---- Close ---- */
     if (ev->type == WM_CLOSE) {
         dbg_printf("[frankamp] WM_CLOSE\n");
@@ -1432,11 +1443,14 @@ int main(int argc, char **argv) {
     wm_set_focus(fa->hwnd);
     taskbar_invalidate();
 
-    /* If a file path was passed as argument, add and play it */
-    if (argc > 1 && argv[1] && argv[1][0]) {
-        int idx = playlist_add(fa, argv[1]);
-        if (idx >= 0)
-            play_start(fa, idx);
+    /* If file paths were passed as arguments, add them all and play */
+    if (argc > 1) {
+        for (int i = 1; i < argc; i++) {
+            if (argv[i] && argv[i][0])
+                playlist_add(fa, argv[i]);
+        }
+        if (fa->pl_count > 0)
+            play_start(fa, 0);
     }
 
     dbg_printf("[frankamp] entering main loop\n");

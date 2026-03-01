@@ -20,6 +20,7 @@
 #include "font.h"
 #include "display.h"
 #include "sdcard_init.h"
+#include "desktop.h"
 #include "snd.h"
 #include "ff.h"
 #include "hardware/watchdog.h"
@@ -34,6 +35,13 @@
 #define SM_ID_TERMINAL      1
 #define SM_ID_REBOOT        2
 #define SM_ID_FIRMWARE      3
+
+/* Right-click context popup state (drawn inside startmenu, not popup menu) */
+static bool    sm_ctx_open    = false;
+static int8_t  sm_ctx_hover   = -1;
+static int     sm_ctx_app_idx = -1;
+static int16_t sm_ctx_x, sm_ctx_y, sm_ctx_w, sm_ctx_h;
+#define SM_CTX_ITEM_H  20   /* height of one popup item */
 
 #define SM_ITEM_HEIGHT  24
 #define SM_SEPARATOR_H   8
@@ -289,9 +297,12 @@ void startmenu_close(void) {
     sm_open = false;
     sub_open = false;
     fw_open = false;
+    sm_ctx_open = false;
     sm_hover = -1;
     sub_hover = -1;
     fw_hover = -1;
+    sm_ctx_hover = -1;
+    sm_ctx_app_idx = -1;
     /* Force full repaint to guarantee stale menu pixels are cleared,
      * even if the popup-close transition detector misses the change. */
     wm_force_full_repaint();
@@ -607,6 +618,27 @@ void startmenu_draw(void) {
             }
         }
     }
+
+    /* Draw right-click context popup (if open) */
+    if (sm_ctx_open) {
+        gfx_fill_rect(sm_ctx_x, sm_ctx_y, sm_ctx_w, sm_ctx_h,
+                       THEME_BUTTON_FACE);
+        gfx_hline(sm_ctx_x, sm_ctx_y, sm_ctx_w, COLOR_WHITE);
+        gfx_vline(sm_ctx_x, sm_ctx_y, sm_ctx_h, COLOR_WHITE);
+        gfx_hline(sm_ctx_x, sm_ctx_y + sm_ctx_h - 1,
+                  sm_ctx_w, COLOR_DARK_GRAY);
+        gfx_vline(sm_ctx_x + sm_ctx_w - 1, sm_ctx_y,
+                  sm_ctx_h, COLOR_DARK_GRAY);
+
+        bool hovered = (sm_ctx_hover == 0);
+        uint8_t bg = hovered ? COLOR_BLUE : THEME_BUTTON_FACE;
+        uint8_t fg = hovered ? COLOR_WHITE : COLOR_BLACK;
+        gfx_fill_rect(sm_ctx_x + 2, sm_ctx_y + 2,
+                       sm_ctx_w - 4, SM_CTX_ITEM_H, bg);
+        gfx_text_ui(sm_ctx_x + 6,
+                    sm_ctx_y + 2 + (SM_CTX_ITEM_H - FONT_UI_HEIGHT) / 2,
+                    "Send to Desktop", fg, bg);
+    }
 }
 
 /*==========================================================================
@@ -640,11 +672,67 @@ bool startmenu_mouse(uint8_t type, int16_t x, int16_t y) {
         return true;
     }
 
+    /* Check right-click context popup (drawn inside startmenu) */
+    if (sm_ctx_open) {
+        /* The popup should stay open while the cursor is inside EITHER
+         * the popup rect OR the originating app row in Programs. */
+        bool in_popup = (x >= sm_ctx_x && x < sm_ctx_x + sm_ctx_w &&
+                         y >= sm_ctx_y && y < sm_ctx_y + sm_ctx_h);
+        bool in_origin_row = false;
+        if (sub_open && sm_ctx_app_idx >= 0) {
+            int row_y = sub_y + 2 + sm_ctx_app_idx * SM_ITEM_HEIGHT;
+            in_origin_row = (x >= sub_x && x < sub_x + sub_w &&
+                             y >= row_y && y < row_y + SM_ITEM_HEIGHT);
+        }
+
+        if (in_popup) {
+            if (type == WM_MOUSEMOVE || type == WM_LBUTTONDOWN) {
+                int cy = sm_ctx_y + 2;
+                int new_ch = -1;
+                if (y >= cy && y < cy + SM_CTX_ITEM_H) new_ch = 0;
+                if (new_ch != sm_ctx_hover) {
+                    sm_ctx_hover = new_ch;
+                    wm_mark_dirty();
+                }
+            }
+            if (type == WM_LBUTTONUP && sm_ctx_hover >= 0) {
+                /* "Send to Desktop" action */
+                if (sm_ctx_app_idx >= 0 && sm_ctx_app_idx < fos_app_count)
+                    desktop_add_shortcut(fos_apps[sm_ctx_app_idx].path);
+                else if (sm_ctx_app_idx == fos_app_count)
+                    desktop_add_shortcut(DESKTOP_BUILTIN_NAVIGATOR);
+                else if (sm_ctx_app_idx == fos_app_count + 1)
+                    desktop_add_shortcut(DESKTOP_BUILTIN_TERMINAL);
+                sm_ctx_open = false;
+                sm_ctx_hover = -1;
+                sm_ctx_app_idx = -1;
+                wm_force_full_repaint();
+            }
+            return true;
+        }
+        if (in_origin_row) {
+            /* Cursor on the originating app row — keep popup open,
+             * but clear its hover since we're not inside it. */
+            if (sm_ctx_hover != -1) {
+                sm_ctx_hover = -1;
+                wm_mark_dirty();
+            }
+            return true;
+        }
+        /* Cursor left both popup and originating row — close */
+        sm_ctx_open = false;
+        sm_ctx_hover = -1;
+        sm_ctx_app_idx = -1;
+        wm_force_full_repaint();
+        /* Fall through so the event is handled by menu areas below */
+    }
+
     /* Check Programs submenu */
     if (sub_open && x >= sub_x && x < sub_x + sub_w &&
         y >= sub_y && y < sub_y + sub_h) {
         int sub_count = fos_app_count + 2;
-        if (type == WM_MOUSEMOVE || type == WM_LBUTTONDOWN) {
+        if (type == WM_MOUSEMOVE || type == WM_LBUTTONDOWN ||
+            type == WM_RBUTTONDOWN) {
             int iy = sub_y + 2;
             int new_sub = -1;
             for (int i = 0; i < sub_count; i++) {
@@ -661,6 +749,23 @@ bool startmenu_mouse(uint8_t type, int16_t x, int16_t y) {
         }
         if (type == WM_LBUTTONUP && sub_hover >= 0) {
             execute_sub_item(sub_hover);
+        }
+        /* Right-click on any app in Programs → open inline context popup */
+        if (type == WM_RBUTTONUP && sub_hover >= 0 &&
+            sub_hover < fos_app_count + 2) {
+            sm_ctx_app_idx = sub_hover;
+            /* Position context popup at cursor, clamped to screen */
+            sm_ctx_w = 18 * FONT_UI_WIDTH + 12; /* "Send to Desktop" width */
+            sm_ctx_h = SM_CTX_ITEM_H + 4;       /* 1 item + borders */
+            sm_ctx_x = x;
+            sm_ctx_y = y;
+            if (sm_ctx_x + sm_ctx_w > DISPLAY_WIDTH)
+                sm_ctx_x = DISPLAY_WIDTH - sm_ctx_w;
+            if (sm_ctx_y + sm_ctx_h > DISPLAY_HEIGHT)
+                sm_ctx_y = DISPLAY_HEIGHT - sm_ctx_h;
+            sm_ctx_hover = -1;
+            sm_ctx_open = true;
+            wm_mark_dirty();
         }
         return true;
     }

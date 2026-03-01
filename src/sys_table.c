@@ -48,6 +48,8 @@
 #include "clipboard.h"
 #include "controls.h"
 #include "find_dialog.h"
+#include "file_assoc.h"
+#include "desktop.h"
 #include <math.h>
 
 #include "sys/fcntl.h"
@@ -659,6 +661,14 @@ unsigned long __in_systable() __aligned(4096) sys_table_ptrs[] = {
     psram_alloc,        // 491
     psram_free,         // 492
     psram_is_available, // 493
+    // API v.31 — File associations + Desktop
+    file_assoc_scan,        // 494
+    file_assoc_find,        // 495
+    file_assoc_find_all,    // 496
+    file_assoc_open,        // 497
+    file_assoc_open_with,   // 498
+    file_assoc_get_apps,    // 499
+    desktop_add_shortcut,   // 500
     // TODO:
     0
 };

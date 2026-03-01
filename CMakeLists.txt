@@ -76,6 +76,8 @@ add_executable(frankos
     src/find_dialog.c
     src/swap.c
     src/alttab.c
+    src/file_assoc.c
+    src/desktop.c
 
     # MOS2 core (copied from murmulator-os2)
     src/app.c

@@ -385,8 +385,6 @@ static bool zx_event(hwnd_t hwnd, const window_event_t *ev) {
  * ====================================================================== */
 
 int main(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
 
     /* Allocate the globals struct on the SRAM heap and install in r9.
      * From this point on, all code in this task can access G-> fields. */
@@ -464,6 +462,13 @@ int main(int argc, char **argv) {
     wm_show_window(G->app_hwnd);
     wm_set_focus(G->app_hwnd);
     taskbar_invalidate();
+
+    /* If a file path was passed as argument, queue it for loading */
+    if (argc > 1 && argv[1] && argv[1][0]) {
+        strncpy(G->tap_path, argv[1], sizeof(G->tap_path) - 1);
+        G->tap_path[sizeof(G->tap_path) - 1] = '\0';
+        G->tap_path_ready = true;
+    }
 
     serial_printf("ZX: running\n");
 

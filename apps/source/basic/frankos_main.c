@@ -73,6 +73,9 @@ static TaskHandle_t       g_task    = NULL;
 /* Closing flag and MMAbort — also read by frankos_platform.c */
 volatile bool             g_closing = false;
 
+/* Autorun path — set from argv[1], consumed by basic_run_interpreter() */
+char                      g_autorun_path[256];
+
 /* MMAbort is declared in PicoMite.c and wrapped; updated here on Ctrl+C. */
 extern volatile int       MMAbort;
 
@@ -429,12 +432,16 @@ static void blink_cb(TimerHandle_t t)
 
 int main(int argc, char **argv)
 {
-    (void)argc;
-    (void)argv;
-
     printf("[basic] main() start\n");
     g_task = xTaskGetCurrentTaskHandle();
     printf("[basic] task handle: %p\n", (void*)g_task);
+
+    /* Store autorun path from file association launch */
+    g_autorun_path[0] = '\0';
+    if (argc > 1 && argv[1] && argv[1][0]) {
+        strncpy(g_autorun_path, argv[1], sizeof(g_autorun_path) - 1);
+        g_autorun_path[sizeof(g_autorun_path) - 1] = '\0';
+    }
 
     /* Allocate text buffer from PSRAM heap before any display calls. */
     if (!g_textbuf)

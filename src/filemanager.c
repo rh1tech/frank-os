@@ -21,6 +21,8 @@
 #include "cursor.h"
 #include "ff.h"
 #include "sdcard_init.h"
+#include "file_assoc.h"
+#include "desktop.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include <string.h>
@@ -1079,6 +1081,14 @@ static void fm_open_item(filemanager_t *fm, int idx) {
         }
         wm_set_pending_icon(icon);
         launch_elf_app(full);
+    } else {
+        /* Regular file — try file association */
+        if (!file_assoc_open(full)) {
+            dialog_show(fm->hwnd, "Open",
+                        "No application is registered\n"
+                        "for this file type.",
+                        DLG_ICON_INFO, DLG_BTN_OK);
+        }
     }
 }
 
@@ -1309,15 +1319,47 @@ static void fm_clip_paste(filemanager_t *fm) {
 
 static void fm_show_context_menu(filemanager_t *fm, int16_t sx, int16_t sy,
                                   bool on_item) {
-    menu_item_t items[8];
+    menu_item_t items[MENU_POPUP_MAX];
     uint8_t count = 0;
 
+    /* "Open with" submenu state — declared here so it's in scope
+     * for the menu_popup_set_submenu call after the if/else block. */
+    int ow_idx = -1;
+    const fa_app_t *ow_apps[4];
+    int ow_nmatches = 0;
+
     if (on_item) {
+        /* --- Determine if the focused entry is a regular file --- */
+        int fi = fm->focus_index;
+        bool is_file = (fi >= 0 && fi < (int)fm->entry_count
+                        && !(fm->entries[fi].attrib & AM_DIR)
+                        && !fm->entries[fi].is_executable);
+        const char *ext = NULL;
+        if (is_file) {
+            ext = strrchr(fm->entries[fi].name, '.');
+            if (ext) ext++;  /* skip the dot */
+        }
+
+        /* "Open" — always present */
         strncpy(items[count].text, "Open", sizeof(items[0].text));
         items[count].command_id = FN_CMD_CTX_OPEN;
         items[count].flags = 0;
         items[count].accel_key = 0;
         count++;
+
+        /* "Open with ▶" submenu for matching apps */
+        if (ext) {
+            ow_nmatches = file_assoc_find_all(ext, ow_apps, 4);
+            if (ow_nmatches > 0) {
+                strncpy(items[count].text, "Open with",
+                        sizeof(items[0].text));
+                items[count].command_id = 0;
+                items[count].flags = MIF_SUBMENU;
+                items[count].accel_key = 0;
+                ow_idx = count;
+                count++;
+            }
+        }
 
         items[count] = (menu_item_t){ "", 0, MIF_SEPARATOR, 0 };
         count++;
@@ -1337,17 +1379,28 @@ static void fm_show_context_menu(filemanager_t *fm, int16_t sx, int16_t sy,
         items[count] = (menu_item_t){ "", 0, MIF_SEPARATOR, 0 };
         count++;
 
+        strncpy(items[count].text, "Send to Desktop", sizeof(items[0].text));
+        items[count].command_id = FN_CMD_CTX_SEND_DESKTOP;
+        items[count].flags = 0;
+        items[count].accel_key = 0;
+        count++;
+
+        items[count] = (menu_item_t){ "", 0, MIF_SEPARATOR, 0 };
+        count++;
+
         strncpy(items[count].text, "Delete", sizeof(items[0].text));
         items[count].command_id = FN_CMD_CTX_DELETE;
         items[count].flags = 0;
         items[count].accel_key = 0;
         count++;
 
-        strncpy(items[count].text, "Rename", sizeof(items[0].text));
-        items[count].command_id = FN_CMD_CTX_RENAME;
-        items[count].flags = 0;
-        items[count].accel_key = 0;
-        count++;
+        if (count < MENU_POPUP_MAX) {
+            strncpy(items[count].text, "Rename", sizeof(items[0].text));
+            items[count].command_id = FN_CMD_CTX_RENAME;
+            items[count].flags = 0;
+            items[count].accel_key = 0;
+            count++;
+        }
     } else {
         strncpy(items[count].text, "Paste", sizeof(items[0].text));
         items[count].command_id = FN_CMD_CTX_PASTE;
@@ -1375,6 +1428,19 @@ static void fm_show_context_menu(filemanager_t *fm, int16_t sx, int16_t sy,
     }
 
     menu_popup_show(fm->hwnd, sx, sy, items, count);
+
+    /* Attach "Open with" submenu items if present */
+    if (ow_idx >= 0 && ow_nmatches > 0) {
+        menu_item_t sub_items[4];
+        for (int i = 0; i < ow_nmatches; i++) {
+            memset(&sub_items[i], 0, sizeof(sub_items[i]));
+            strncpy(sub_items[i].text, ow_apps[i]->name,
+                    sizeof(sub_items[i].text));
+            sub_items[i].text[sizeof(sub_items[i].text) - 1] = '\0';
+            sub_items[i].command_id = FN_CMD_CTX_OPEN_WITH_BASE + i;
+        }
+        menu_popup_set_submenu(ow_idx, sub_items, ow_nmatches);
+    }
 }
 
 /*==========================================================================
@@ -1420,6 +1486,55 @@ static bool fm_scrollbar_click(filemanager_t *fm, int16_t mx, int16_t my,
     fm_clamp_scroll(fm, ch);
     wm_invalidate(fm->hwnd);
     return true;
+}
+
+/*==========================================================================
+ * Batch-open helper  (kept noinline so the 2 KB buffer is only on the
+ * stack when actually opening files — not for every fm_event call)
+ *=========================================================================*/
+
+__attribute__((noinline))
+static void fm_batch_open(filemanager_t *fm) {
+    #define BATCH_MAX 8
+    const char *batch_ptrs[BATCH_MAX];
+    static char batch_paths[BATCH_MAX][FN_PATH_MAX];
+    int batch_n = 0;
+    bool opened_any = false;
+
+    for (int i = 0; i < (int)fm->entry_count; i++) {
+        if (!(fm->entries[i].sel_flags & FN_SEL_SELECTED)) continue;
+        fn_entry_t *e = &fm->entries[i];
+        if ((e->attrib & AM_DIR) || e->is_executable) {
+            fm_open_item(fm, i);
+            opened_any = true;
+        } else if (batch_n < BATCH_MAX) {
+            if (fm->path[1] == '\0')
+                snprintf(batch_paths[batch_n], FN_PATH_MAX,
+                         "/%s", e->name);
+            else
+                snprintf(batch_paths[batch_n], FN_PATH_MAX,
+                         "%s/%s", fm->path, e->name);
+            batch_ptrs[batch_n] = batch_paths[batch_n];
+            batch_n++;
+        }
+    }
+
+    if (batch_n > 0) {
+        const char *ext = strrchr(batch_ptrs[0], '.');
+        if (ext) ext++;
+        const fa_app_t *app = ext ? file_assoc_find(ext) : NULL;
+        if (app) {
+            launch_elf_app_with_files(app->path, batch_ptrs, batch_n);
+        } else if (batch_n == 1) {
+            if (fm->focus_index >= 0)
+                fm_open_item(fm, fm->focus_index);
+        }
+        opened_any = true;
+    }
+    #undef BATCH_MAX
+
+    if (!opened_any && fm->focus_index >= 0)
+        fm_open_item(fm, fm->focus_index);
 }
 
 /*==========================================================================
@@ -1903,9 +2018,48 @@ static bool fm_event(hwnd_t hwnd, const window_event_t *event) {
             return true;
         case FN_CMD_CTX_OPEN:
         case FN_CMD_OPEN:
-            if (fm->focus_index >= 0)
-                fm_open_item(fm, fm->focus_index);
+            fm_batch_open(fm);
             return true;
+
+        case FN_CMD_CTX_SEND_DESKTOP: {
+            if (fm->focus_index >= 0 && fm->focus_index < (int)fm->entry_count) {
+                fn_entry_t *e = &fm->entries[fm->focus_index];
+                char full[FN_PATH_MAX];
+                if (fm->path[1] == '\0')
+                    snprintf(full, sizeof(full), "/%s", e->name);
+                else
+                    snprintf(full, sizeof(full), "%s/%s", fm->path, e->name);
+                desktop_add_shortcut(full);
+            }
+            return true;
+        }
+
+        default:
+            /* "Open with" dynamic IDs: 520..535 */
+            if (id >= FN_CMD_CTX_OPEN_WITH_BASE &&
+                id < FN_CMD_CTX_OPEN_WITH_BASE + FA_MAX_APPS) {
+                int app_idx = id - FN_CMD_CTX_OPEN_WITH_BASE;
+                if (fm->focus_index >= 0 &&
+                    fm->focus_index < (int)fm->entry_count) {
+                    fn_entry_t *e = &fm->entries[fm->focus_index];
+                    /* Re-derive the extension and find matching apps */
+                    const char *dot = strrchr(e->name, '.');
+                    const char *ext = dot ? dot + 1 : NULL;
+                    const fa_app_t *matched[4];
+                    int nmatches = ext ? file_assoc_find_all(ext, matched, 4) : 0;
+                    if (app_idx < nmatches) {
+                        char full[FN_PATH_MAX];
+                        if (fm->path[1] == '\0')
+                            snprintf(full, sizeof(full), "/%s", e->name);
+                        else
+                            snprintf(full, sizeof(full), "%s/%s",
+                                     fm->path, e->name);
+                        file_assoc_open_with(full, matched[app_idx]->path);
+                    }
+                }
+                return true;
+            }
+            break;
 
         /* Help menu */
         case FN_CMD_ABOUT:

@@ -66,7 +66,8 @@ set(CONVERT_ICO_16 "${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/convert_ico_16.py
 add_custom_command(
     OUTPUT "${CMAKE_BINARY_DIR}/frankamp.inf"
     COMMAND ${Python3_EXECUTABLE} "${CONVERT_ICO_16}"
-        --inf "FrankAmp" "${ICON_ICO}"
+        --inf --ext "ext:mp3,mod"
+        "FrankAmp" "${ICON_ICO}"
         "${CMAKE_BINARY_DIR}/frankamp.inf"
     DEPENDS "${CONVERT_ICO_16}" "${ICON_ICO}"
     COMMENT "Generating frankamp.inf with embedded icon"

@@ -18,12 +18,14 @@
  *=========================================================================*/
 
 #define MENU_MAX_ITEMS    8    /* max items per dropdown */
+#define MENU_POPUP_MAX   12   /* max items in a popup/context menu */
 #define MENU_MAX_MENUS    4    /* max top-level menus per window */
 #define MENU_MAX_BARS    16    /* one per window slot */
 
 /* Item flags */
 #define MIF_SEPARATOR    (1u << 0)
 #define MIF_DISABLED     (1u << 1)
+#define MIF_SUBMENU      (1u << 2)
 
 typedef struct {
     char     text[20];       /* display text */
@@ -118,5 +120,11 @@ void menu_popup_draw(void);
 
 /* Close any open popup menu */
 void menu_popup_close(void);
+
+/* Attach a submenu to a MIF_SUBMENU item in the current popup.
+ * parent_idx is the index of the item with MIF_SUBMENU set.
+ * The submenu opens automatically when hovering that item. */
+void menu_popup_set_submenu(uint8_t parent_idx,
+                            const menu_item_t *items, uint8_t count);
 
 #endif /* MENU_H */

@@ -172,6 +172,21 @@ static void np_update_title(void) {
  * File I/O
  *=========================================================================*/
 
+/* Check if buffer looks like a binary file (has NUL bytes or too many
+ * non-printable characters in the first portion). */
+static bool np_is_binary(const char *buf, uint32_t len) {
+    uint32_t check = len > 4096 ? 4096 : len;
+    uint32_t ctrl = 0;
+    for (uint32_t i = 0; i < check; i++) {
+        unsigned char c = (unsigned char)buf[i];
+        if (c == 0) return true;  /* NUL byte = binary */
+        if (c < 0x20 && c != '\n' && c != '\r' && c != '\t')
+            ctrl++;
+    }
+    /* More than 10% control characters = binary */
+    return (check > 0 && ctrl * 10 > check);
+}
+
 static bool np_load_file(const char *path) {
     FIL fil;
     if (f_open(&fil, path, FA_READ) != FR_OK)
@@ -189,6 +204,17 @@ static bool np_load_file(const char *path) {
     f_close(&fil);
 
     np.text_buf[br] = '\0';
+
+    /* Reject binary files */
+    if (np_is_binary(np.text_buf, br)) {
+        np.text_buf[0] = '\0';
+        dialog_show(np.hwnd, "Notepad",
+                    "Cannot open this file.\n"
+                    "It appears to be a binary file.",
+                    DLG_ICON_ERROR, DLG_BTN_OK);
+        return false;
+    }
+
     textarea_set_text(&np.ta, np.text_buf, (int32_t)br);
 
     strncpy(np.filepath, path, NP_PATH_MAX - 1);
@@ -274,7 +300,7 @@ static void np_do_new(void) {
 static void np_do_open(void) {
     char dir[NP_PATH_MAX];
     np_get_dir(dir, NP_PATH_MAX);
-    file_dialog_open(np.hwnd, "Open", dir, ".txt");
+    file_dialog_open(np.hwnd, "Open", dir, NULL);
 }
 
 static void np_do_save(void) {
@@ -289,7 +315,7 @@ static void np_do_save_as(void) {
     char dir[NP_PATH_MAX];
     np_get_dir(dir, NP_PATH_MAX);
     const char *fname = np_get_filename();
-    file_dialog_save(np.hwnd, "Save As", dir, ".txt",
+    file_dialog_save(np.hwnd, "Save As", dir, NULL,
                      fname ? fname : "untitled.txt");
 }
 
@@ -616,9 +642,6 @@ static void np_paint(hwnd_t hwnd) {
  *=========================================================================*/
 
 int main(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
-
     app_task = xTaskGetCurrentTaskHandle();
     app_closing = false;
 
@@ -667,6 +690,11 @@ int main(int argc, char **argv) {
     wm_show_window(np.hwnd);
     wm_set_focus(np.hwnd);
     taskbar_invalidate();
+
+    /* If a file path was passed as argument, open it */
+    if (argc > 1 && argv[1] && argv[1][0]) {
+        np_load_file(argv[1]);
+    }
 
     dbg_printf("[notepad] started\n");
 

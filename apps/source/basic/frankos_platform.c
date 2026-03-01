@@ -107,6 +107,7 @@ extern void basic_kbuf_push(int c);
 extern int  basic_kbuf_pop(void);
 extern int  basic_kbuf_avail(void);
 extern volatile bool g_closing;
+extern char          g_autorun_path[256];
 
 /* ── Convenience macro (like DECREMENT_IF_ACTIVE in PicoMite.c) ─────────── */
 #define DECR_IF_ACTIVE(x)  do { if ((x) > 0) (x)--; } while (0)
@@ -725,6 +726,22 @@ reset:
     /* Set the longjmp point for error recovery and end-of-command. */
     if (setjmp(mark) != 0)
         ClearTempMemory();   /* error recovery: clear temp strings */
+
+    /* If an autorun file was specified via argv[1], inject RUN command. */
+    if (g_autorun_path[0]) {
+        char runcmd[280];
+        snprintf(runcmd, sizeof(runcmd), "RUN \"%s\"", g_autorun_path);
+        g_autorun_path[0] = '\0';  /* consume — only auto-run once */
+        strcpy((char *)inpbuf, runcmd);
+        tokenise(true);
+        if (setjmp(jmprun) != 0) {
+            PrepareProgram(false);
+            CurrentLinePtr = 0;
+        }
+        ExecuteProgram(tknbuf);
+        memset(inpbuf, 0, STRINGSIZE);
+        longjmp(mark, 1);
+    }
 
     while (!g_closing) {
         MMAbort   = false;

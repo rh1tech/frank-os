@@ -122,12 +122,15 @@ def read_ico_16(filename):
     raise ValueError("No 16x16 or 32x32 image found in .ico file")
 
 
-def write_inf(name, pixels, output_path):
-    """Write name + newline + 256 raw bytes to output .inf file."""
+def write_inf(name, pixels, output_path, ext_line=None):
+    """Write name + newline + 256 raw bytes + optional ext line to output .inf file."""
     with open(output_path, "wb") as f:
         f.write(name.encode("ascii"))
         f.write(b"\n")
         f.write(bytes(pixels))
+        if ext_line:
+            f.write(ext_line.encode("ascii"))
+            f.write(b"\n")
 
 
 def format_c_array(name, pixels):
@@ -152,15 +155,21 @@ def main():
     mode = sys.argv[1]
 
     if mode == "--inf":
-        if len(sys.argv) != 5:
-            print(f"Usage: {sys.argv[0]} --inf \"Name\" input.ico output.inf",
+        # Parse optional --ext argument
+        ext_line = None
+        args = sys.argv[2:]
+        if len(args) >= 2 and args[0] == "--ext":
+            ext_line = args[1]
+            args = args[2:]
+        if len(args) != 3:
+            print(f"Usage: {sys.argv[0]} --inf [--ext EXT_LINE] \"Name\" input.ico output.inf",
                   file=sys.stderr)
             sys.exit(1)
-        name = sys.argv[2]
-        ico_path = sys.argv[3]
-        out_path = sys.argv[4]
+        name = args[0]
+        ico_path = args[1]
+        out_path = args[2]
         pixels = read_ico_16(ico_path)
-        write_inf(name, pixels, out_path)
+        write_inf(name, pixels, out_path, ext_line)
 
     elif mode == "--c-array":
         if len(sys.argv) != 4:

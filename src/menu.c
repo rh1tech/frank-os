@@ -454,11 +454,19 @@ bool menu_try_alt_key(hwnd_t hwnd, uint8_t hid_code) {
  *=========================================================================*/
 
 static hwnd_t      popup_owner   = HWND_NULL;
-static menu_item_t popup_items[MENU_MAX_ITEMS];
+static menu_item_t popup_items[MENU_POPUP_MAX];
 static uint8_t     popup_count;
 static int8_t      popup_hover   = -1;
 static int16_t     popup_x, popup_y, popup_w, popup_h;
 static bool        popup_visible;
+
+/* Sub-popup (one level deep, for "Open with" submenu etc.) */
+static menu_item_t popup_sub_items[MENU_POPUP_MAX];
+static uint8_t     popup_sub_count;
+static int8_t      popup_sub_hover  = -1;
+static int8_t      popup_sub_parent = -1;  /* index in popup_items */
+static int16_t     popup_sub_x, popup_sub_y, popup_sub_w, popup_sub_h;
+static bool        popup_sub_visible;
 
 void menu_popup_show(hwnd_t owner, int16_t sx, int16_t sy,
                      const menu_item_t *items, uint8_t count) {
@@ -466,7 +474,7 @@ void menu_popup_show(hwnd_t owner, int16_t sx, int16_t sy,
     if (menu_is_open()) menu_close();
 
     popup_owner = owner;
-    popup_count = count > MENU_MAX_ITEMS ? MENU_MAX_ITEMS : count;
+    popup_count = count > MENU_POPUP_MAX ? MENU_POPUP_MAX : count;
     for (int i = 0; i < popup_count; i++)
         popup_items[i] = items[i];
     popup_hover = -1;
@@ -506,8 +514,63 @@ bool menu_popup_is_open(void) {
 
 void menu_popup_close(void) {
     popup_visible = false;
+    popup_sub_visible = false;
+    popup_sub_parent = -1;
+    popup_sub_count = 0;
+    popup_sub_hover = -1;
     popup_owner = HWND_NULL;
     popup_hover = -1;
+    wm_mark_dirty();
+}
+
+void menu_popup_set_submenu(uint8_t parent_idx,
+                            const menu_item_t *items, uint8_t count) {
+    popup_sub_parent = parent_idx;
+    popup_sub_count = count > MENU_POPUP_MAX ? MENU_POPUP_MAX : count;
+    for (int i = 0; i < popup_sub_count; i++)
+        popup_sub_items[i] = items[i];
+    popup_sub_visible = false;
+    popup_sub_hover = -1;
+}
+
+static void popup_sub_open(void) {
+    if (popup_sub_parent < 0 || popup_sub_count == 0) return;
+
+    /* Calculate y position of parent item in the main popup */
+    int iy = popup_y + 2;
+    for (int i = 0; i < popup_sub_parent; i++) {
+        iy += (popup_items[i].flags & MIF_SEPARATOR) ?
+              MENU_SEPARATOR_H : MENU_ITEM_HEIGHT;
+    }
+
+    /* Calculate sub dimensions */
+    int max_w = MENU_MIN_WIDTH;
+    for (int i = 0; i < popup_sub_count; i++) {
+        int tw = (int)strlen(popup_sub_items[i].text) * FONT_UI_WIDTH +
+                 MENU_PAD_LEFT + MENU_PAD_RIGHT;
+        if (tw > max_w) max_w = tw;
+    }
+    popup_sub_w = max_w;
+    popup_sub_h = 4;
+    for (int i = 0; i < popup_sub_count; i++) {
+        popup_sub_h += (popup_sub_items[i].flags & MIF_SEPARATOR) ?
+                       MENU_SEPARATOR_H : MENU_ITEM_HEIGHT;
+    }
+
+    /* Position to the right of main popup */
+    popup_sub_x = popup_x + popup_w - 2;
+    popup_sub_y = iy;
+
+    /* Clamp to screen */
+    if (popup_sub_x + popup_sub_w + MENU_SHADOW > DISPLAY_WIDTH)
+        popup_sub_x = popup_x - popup_sub_w + 2;  /* flip to left */
+    if (popup_sub_y + popup_sub_h + MENU_SHADOW > FB_HEIGHT)
+        popup_sub_y = FB_HEIGHT - popup_sub_h - MENU_SHADOW;
+    if (popup_sub_x < 0) popup_sub_x = 0;
+    if (popup_sub_y < 0) popup_sub_y = 0;
+
+    popup_sub_visible = true;
+    popup_sub_hover = -1;
     wm_mark_dirty();
 }
 
@@ -556,14 +619,106 @@ void menu_popup_draw(void) {
                     iy + (MENU_ITEM_HEIGHT - FONT_UI_HEIGHT) / 2,
                     item->text, item_fg, item_bg);
 
+        /* Submenu arrow "▶" */
+        if (item->flags & MIF_SUBMENU) {
+            gfx_char_ui(popup_x + popup_w - 14,
+                        iy + (MENU_ITEM_HEIGHT - FONT_UI_HEIGHT) / 2,
+                        '\x17', item_fg, item_bg);
+        }
+
         iy += MENU_ITEM_HEIGHT;
+    }
+
+    /* Draw sub-popup if visible */
+    if (popup_sub_visible && popup_sub_count > 0) {
+        gfx_fill_rect_dithered(popup_sub_x + MENU_SHADOW,
+                               popup_sub_y + MENU_SHADOW,
+                               popup_sub_w, popup_sub_h, COLOR_BLACK);
+        gfx_fill_rect(popup_sub_x, popup_sub_y,
+                       popup_sub_w, popup_sub_h, THEME_BUTTON_FACE);
+        gfx_hline(popup_sub_x, popup_sub_y, popup_sub_w, COLOR_WHITE);
+        gfx_vline(popup_sub_x, popup_sub_y, popup_sub_h, COLOR_WHITE);
+        gfx_hline(popup_sub_x, popup_sub_y + popup_sub_h - 1,
+                  popup_sub_w, COLOR_BLACK);
+        gfx_vline(popup_sub_x + popup_sub_w - 1, popup_sub_y,
+                  popup_sub_h, COLOR_BLACK);
+        gfx_hline(popup_sub_x + 1, popup_sub_y + popup_sub_h - 2,
+                  popup_sub_w - 2, COLOR_DARK_GRAY);
+        gfx_vline(popup_sub_x + popup_sub_w - 2, popup_sub_y + 1,
+                  popup_sub_h - 2, COLOR_DARK_GRAY);
+
+        int sy = popup_sub_y + 2;
+        for (int i = 0; i < popup_sub_count; i++) {
+            menu_item_t *si = &popup_sub_items[i];
+            if (si->flags & MIF_SEPARATOR) {
+                int sep_y = sy + MENU_SEPARATOR_H / 2;
+                gfx_hline(popup_sub_x + 2, sep_y - 1,
+                          popup_sub_w - 4, COLOR_DARK_GRAY);
+                gfx_hline(popup_sub_x + 2, sep_y,
+                          popup_sub_w - 4, COLOR_WHITE);
+                sy += MENU_SEPARATOR_H;
+                continue;
+            }
+            bool sh = (i == popup_sub_hover);
+            uint8_t sbg = sh ? COLOR_BLUE : THEME_BUTTON_FACE;
+            uint8_t sfg = sh ? COLOR_WHITE : COLOR_BLACK;
+            if (si->flags & MIF_DISABLED) {
+                sfg = COLOR_DARK_GRAY;
+                if (sh) sbg = THEME_BUTTON_FACE;
+            }
+            gfx_fill_rect(popup_sub_x + 2, sy,
+                          popup_sub_w - 4, MENU_ITEM_HEIGHT, sbg);
+            gfx_text_ui(popup_sub_x + MENU_PAD_LEFT,
+                        sy + (MENU_ITEM_HEIGHT - FONT_UI_HEIGHT) / 2,
+                        si->text, sfg, sbg);
+            sy += MENU_ITEM_HEIGHT;
+        }
     }
 }
 
 bool menu_popup_mouse(uint8_t type, int16_t x, int16_t y) {
     if (!popup_visible) return false;
 
-    /* Check if mouse is inside popup */
+    /* Check sub-popup first */
+    if (popup_sub_visible &&
+        x >= popup_sub_x && x < popup_sub_x + popup_sub_w &&
+        y >= popup_sub_y && y < popup_sub_y + popup_sub_h) {
+
+        if (type == WM_MOUSEMOVE || type == WM_LBUTTONDOWN) {
+            int sy = popup_sub_y + 2;
+            int new_sh = -1;
+            for (int i = 0; i < popup_sub_count; i++) {
+                int ih = (popup_sub_items[i].flags & MIF_SEPARATOR) ?
+                         MENU_SEPARATOR_H : MENU_ITEM_HEIGHT;
+                if (y >= sy && y < sy + ih) {
+                    if (!(popup_sub_items[i].flags &
+                          (MIF_SEPARATOR | MIF_DISABLED)))
+                        new_sh = i;
+                    break;
+                }
+                sy += ih;
+            }
+            if (new_sh != popup_sub_hover) {
+                popup_sub_hover = new_sh;
+                wm_mark_dirty();
+            }
+        }
+
+        if (type == WM_LBUTTONUP && popup_sub_hover >= 0) {
+            uint16_t cmd = popup_sub_items[popup_sub_hover].command_id;
+            hwnd_t target = popup_owner;
+            menu_popup_close();
+            window_event_t ev;
+            memset(&ev, 0, sizeof(ev));
+            ev.type = WM_COMMAND;
+            ev.command.id = cmd;
+            wm_post_event(target, &ev);
+            wm_mark_dirty();
+        }
+        return true;
+    }
+
+    /* Check if mouse is inside main popup */
     if (x >= popup_x && x < popup_x + popup_w &&
         y >= popup_y && y < popup_y + popup_h) {
 
@@ -582,11 +737,30 @@ bool menu_popup_mouse(uint8_t type, int16_t x, int16_t y) {
             }
             if (new_hover != popup_hover) {
                 popup_hover = new_hover;
+                /* Show/hide sub-popup based on hover */
+                if (popup_hover >= 0 &&
+                    (popup_items[popup_hover].flags & MIF_SUBMENU) &&
+                    popup_hover == popup_sub_parent) {
+                    if (!popup_sub_visible)
+                        popup_sub_open();
+                } else {
+                    if (popup_sub_visible) {
+                        popup_sub_visible = false;
+                        popup_sub_hover = -1;
+                    }
+                }
                 wm_mark_dirty();
             }
         }
 
         if (type == WM_LBUTTONUP && popup_hover >= 0) {
+            /* Don't fire command for submenu items — the sub-popup
+             * handles the selection instead */
+            if (popup_items[popup_hover].flags & MIF_SUBMENU) {
+                if (!popup_sub_visible)
+                    popup_sub_open();
+                return true;
+            }
             uint16_t cmd = popup_items[popup_hover].command_id;
             hwnd_t target = popup_owner;
             menu_popup_close();

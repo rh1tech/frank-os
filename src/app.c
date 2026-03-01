@@ -1788,6 +1788,70 @@ void __in_hfa() launch_elf_app(const char *path) {
     }
 }
 
+void __in_hfa() launch_elf_app_with_file(const char *app_path,
+                                          const char *file_path) {
+    swap_cancel_deferred();
+    swap_switch_to(HWND_NULL);
+
+    cmd_ctx_t *ctx = get_cmd_startup_ctx();
+    if (ctx->orig_cmd) vPortFree(ctx->orig_cmd);
+    ctx->orig_cmd = copy_str(app_path);
+    if (ctx->argv) {
+        for (uint32_t i = 0; i < ctx->argc; i++) {
+            if (ctx->argv[i]) vPortFree(ctx->argv[i]);
+        }
+        vPortFree(ctx->argv);
+    }
+    ctx->argc = 2;
+    ctx->argv = (char**)pvPortCalloc(3, sizeof(char*));
+    ctx->argv[0] = copy_str(app_path);
+    ctx->argv[1] = copy_str(file_path);
+    ctx->detached = true;
+    if (is_new_app(ctx) && load_app(ctx)) {
+        exec(ctx);
+    } else {
+        hwnd_t focus = wm_get_focus();
+        dialog_show(focus != HWND_NULL ? focus : HWND_NULL,
+                    "Error",
+                    "Failed to start application.\n"
+                    "Not enough memory or file not found.",
+                    DLG_ICON_ERROR, DLG_BTN_OK);
+    }
+}
+
+void __in_hfa() launch_elf_app_with_files(const char *app_path,
+                                          const char **files, int file_count) {
+    swap_cancel_deferred();
+    swap_switch_to(HWND_NULL);
+
+    cmd_ctx_t *ctx = get_cmd_startup_ctx();
+    if (ctx->orig_cmd) vPortFree(ctx->orig_cmd);
+    ctx->orig_cmd = copy_str(app_path);
+    if (ctx->argv) {
+        for (uint32_t i = 0; i < ctx->argc; i++) {
+            if (ctx->argv[i]) vPortFree(ctx->argv[i]);
+        }
+        vPortFree(ctx->argv);
+    }
+    int argc = file_count + 1;
+    ctx->argc = argc;
+    ctx->argv = (char**)pvPortCalloc(argc + 1, sizeof(char*));
+    ctx->argv[0] = copy_str(app_path);
+    for (int i = 0; i < file_count; i++)
+        ctx->argv[i + 1] = copy_str(files[i]);
+    ctx->detached = true;
+    if (is_new_app(ctx) && load_app(ctx)) {
+        exec(ctx);
+    } else {
+        hwnd_t focus = wm_get_focus();
+        dialog_show(focus != HWND_NULL ? focus : HWND_NULL,
+                    "Error",
+                    "Failed to start application.\n"
+                    "Not enough memory or file not found.",
+                    DLG_ICON_ERROR, DLG_BTN_OK);
+    }
+}
+
 // support sygnal for current "sync_ctx" context only for now
 void __in_hfa() app_signal(void) {
     if (bootb_sync_signal) bootb_sync_signal(15);

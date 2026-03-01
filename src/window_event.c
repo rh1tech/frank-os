@@ -15,6 +15,7 @@
 #include "startmenu.h"
 #include "sysmenu.h"
 #include "swap.h"
+#include "desktop.h"
 #include <string.h>
 #include "hardware/sync.h"
 #include "FreeRTOS.h"
@@ -159,6 +160,9 @@ void wm_dispatch_events(void) {
         window_t *win = wm_get_window(hwnd);
         if (win && win->event_handler && !(win->flags & WF_SUSPENDED)) {
             win->event_handler(hwnd, ev);
+        } else if (hwnd == HWND_NULL && ev->type == WM_COMMAND) {
+            /* Desktop context menu commands (popup_owner = HWND_NULL) */
+            desktop_handle_command(ev->command.id);
         }
     }
 }
@@ -506,7 +510,11 @@ void wm_handle_mouse_input(uint8_t type, int16_t x, int16_t y, uint8_t buttons) 
     /* ---- Left button down: hit-test to decide action ---- */
     if (type == WM_LBUTTONDOWN) {
         hwnd_t target = wm_window_at_point(x, y);
-        if (target == HWND_NULL) return;
+        if (target == HWND_NULL) {
+            /* Click on desktop — handle icon selection */
+            desktop_mouse(type, x, y);
+            return;
+        }
 
         /* Modal blocking: if a modal dialog is open and the click
          * target is not the modal window, ignore the click. */
@@ -638,6 +646,8 @@ void wm_handle_mouse_input(uint8_t type, int16_t x, int16_t y, uint8_t buttons) 
         hwnd_t focus = wm_get_focus();
         if (focus != HWND_NULL)
             forward_mouse_event(WM_LBUTTONUP, x, y, buttons, focus);
+        else
+            desktop_mouse(type, x, y);
         return;
     }
 
@@ -694,12 +704,16 @@ void wm_handle_mouse_input(uint8_t type, int16_t x, int16_t y, uint8_t buttons) 
         hwnd_t target = wm_window_at_point(x, y);
         if (target != HWND_NULL)
             forward_mouse_event(type, x, y, buttons, target);
+        else
+            desktop_mouse(type, x, y);
         return;
     }
     if (type == WM_RBUTTONUP) {
         hwnd_t target = wm_window_at_point(x, y);
         if (target != HWND_NULL)
             forward_mouse_event(type, x, y, buttons, target);
+        else
+            desktop_mouse(type, x, y);
         return;
     }
 }

@@ -20,6 +20,7 @@
 #include "sysmenu.h"
 #include "swap.h"
 #include "alttab.h"
+#include "desktop.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include <string.h>
@@ -821,6 +822,7 @@ void wm_composite(void) {
         /*--- Fallback path: full repaint ---*/
         cursor_overlay_erase();
         display_clear(THEME_DESKTOP_COLOR);
+        desktop_paint();
         needs_full_repaint = false;
         did_full_repaint = true;
         expose_count = 0;
@@ -951,6 +953,9 @@ void wm_composite(void) {
             rect_t *er = &expose_rects[e];
             gfx_fill_rect(er->x, er->y, er->w, er->h, THEME_DESKTOP_COLOR);
         }
+        /* Repaint desktop icons over the cleared expose rects */
+        if (saved_expose_count > 0)
+            desktop_paint();
     }
 
     /* Paint dirty visible windows back-to-front.

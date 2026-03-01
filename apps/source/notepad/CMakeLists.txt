@@ -66,7 +66,8 @@ set(CONVERT_ICO_16 "${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/convert_ico_16.py
 add_custom_command(
     OUTPUT "${CMAKE_BINARY_DIR}/notepad.inf"
     COMMAND ${Python3_EXECUTABLE} "${CONVERT_ICO_16}"
-        --inf "Notepad" "${ICON_ICO}"
+        --inf --ext "ext:txt,log,cfg,ini,md,csv,c,h,py,sh,bas"
+        "Notepad" "${ICON_ICO}"
         "${CMAKE_BINARY_DIR}/notepad.inf"
     DEPENDS "${CONVERT_ICO_16}" "${ICON_ICO}"
     COMMENT "Generating notepad.inf with embedded icon"

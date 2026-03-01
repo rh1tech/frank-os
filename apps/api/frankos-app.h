@@ -121,6 +121,7 @@ typedef uint8_t hwnd_t;
 #define WM_RBUTTONUP    19
 #define WM_TIMER        20
 #define WM_COMMAND      21
+#define WM_DROPFILES    22  /* file opened via association; file_path in event */
 
 /* Keyboard modifier flags */
 #define KMOD_SHIFT  (1u << 0)
@@ -142,6 +143,7 @@ typedef struct window_event {
         struct { int16_t w; int16_t h; } size;
         struct { uint16_t id; } command;
         struct { uint16_t timer_id; } timer;
+        struct { const char *file_path; } dropfiles; /* WM_DROPFILES */
     };
 } window_event_t;
 
@@ -794,6 +796,70 @@ static inline void find_dialog_close(void) {
 static inline void wm_mark_dirty(void) {
     typedef void (*fn_t)(void);
     ((fn_t)_sys_table_ptrs[482])();
+}
+
+/* ========================================================================
+ * File association API (indices 494–500)
+ * ======================================================================== */
+
+#define FA_MAX_APPS        16
+#define FA_MAX_EXTS        8
+#define FA_EXT_LEN         8
+#define FA_NAME_LEN        20
+#define FA_PATH_LEN        32
+#define FA_ICON_SIZE       256
+
+typedef struct {
+    char     name[FA_NAME_LEN];
+    char     path[FA_PATH_LEN];
+    uint8_t  icon[FA_ICON_SIZE];
+    bool     has_icon;
+    char     exts[FA_MAX_EXTS][FA_EXT_LEN];
+    uint8_t  ext_count;
+} fa_app_t;
+
+/* 494: file_assoc_scan */
+static inline void file_assoc_scan(void) {
+    typedef void (*fn_t)(void);
+    ((fn_t)_sys_table_ptrs[494])();
+}
+
+/* 495: file_assoc_find */
+static inline const fa_app_t *file_assoc_find(const char *ext) {
+    typedef const fa_app_t *(*fn_t)(const char *);
+    return ((fn_t)_sys_table_ptrs[495])(ext);
+}
+
+/* 496: file_assoc_find_all */
+static inline int file_assoc_find_all(const char *ext,
+                                       const fa_app_t **out, int max) {
+    typedef int (*fn_t)(const char *, const fa_app_t **, int);
+    return ((fn_t)_sys_table_ptrs[496])(ext, out, max);
+}
+
+/* 497: file_assoc_open */
+static inline bool file_assoc_open(const char *file_path) {
+    typedef bool (*fn_t)(const char *);
+    return ((fn_t)_sys_table_ptrs[497])(file_path);
+}
+
+/* 498: file_assoc_open_with */
+static inline bool file_assoc_open_with(const char *file_path,
+                                         const char *app_path) {
+    typedef bool (*fn_t)(const char *, const char *);
+    return ((fn_t)_sys_table_ptrs[498])(file_path, app_path);
+}
+
+/* 499: file_assoc_get_apps */
+static inline const fa_app_t *file_assoc_get_apps(int *count) {
+    typedef const fa_app_t *(*fn_t)(int *);
+    return ((fn_t)_sys_table_ptrs[499])(count);
+}
+
+/* 500: desktop_add_shortcut */
+static inline bool desktop_add_shortcut(const char *path) {
+    typedef bool (*fn_t)(const char *);
+    return ((fn_t)_sys_table_ptrs[500])(path);
 }
 
 #ifdef __cplusplus

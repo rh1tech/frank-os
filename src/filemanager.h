@@ -86,6 +86,9 @@
 #define FN_CMD_CTX_RENAME     506
 #define FN_CMD_CTX_NEW_FOLDER 507
 #define FN_CMD_CTX_REFRESH    508
+#define FN_CMD_CTX_SEND_DESKTOP 509
+/* "Open with" apps use IDs 520..535 (up to FA_MAX_APPS) */
+#define FN_CMD_CTX_OPEN_WITH_BASE 520
 
 /*==========================================================================
  * Directory entry

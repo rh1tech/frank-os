@@ -55,6 +55,7 @@
 /* Misc */
 #define WM_TIMER        20
 #define WM_COMMAND      21
+#define WM_DROPFILES    22  /* file opened via association; file_path in event */
 
 /*==========================================================================
  * Keyboard modifier flags
@@ -199,6 +200,13 @@ struct window_event {
         struct {
             uint16_t timer_id;
         } timer;
+
+        /* WM_DROPFILES — pointer to a null-terminated file path.
+         * The string is valid only during event handler dispatch;
+         * the receiver must copy it if needed. */
+        struct {
+            const char *file_path;
+        } dropfiles;
     };
 };
 
