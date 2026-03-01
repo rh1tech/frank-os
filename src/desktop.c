@@ -435,6 +435,44 @@ void desktop_sort(void) {
     wm_force_full_repaint();
 }
 
+/* Show context menu at screen position (sx, sy).
+ * If on_shortcut is true, shows Open/Remove; otherwise Sort/Refresh. */
+static void dt_show_context_menu(int16_t sx, int16_t sy, bool on_shortcut) {
+    menu_item_t items[4];
+    uint8_t count = 0;
+
+    if (on_shortcut) {
+        strncpy(items[count].text, "Open", sizeof(items[0].text));
+        items[count].command_id = DT_CMD_OPEN;
+        items[count].flags = 0;
+        items[count].accel_key = 0;
+        count++;
+
+        items[count] = (menu_item_t){ "", 0, MIF_SEPARATOR, 0 };
+        count++;
+
+        strncpy(items[count].text, "Remove", sizeof(items[0].text));
+        items[count].command_id = DT_CMD_REMOVE;
+        items[count].flags = 0;
+        items[count].accel_key = 0;
+        count++;
+    } else {
+        strncpy(items[count].text, "Sort by Name", sizeof(items[0].text));
+        items[count].command_id = DT_CMD_SORT_NAME;
+        items[count].flags = 0;
+        items[count].accel_key = 0;
+        count++;
+
+        strncpy(items[count].text, "Refresh", sizeof(items[0].text));
+        items[count].command_id = DT_CMD_REFRESH;
+        items[count].flags = 0;
+        items[count].accel_key = 0;
+        count++;
+    }
+
+    menu_popup_show(HWND_NULL, sx, sy, items, count);
+}
+
 /*==========================================================================
  * Mouse handling
  *=========================================================================*/
@@ -506,41 +544,7 @@ bool desktop_mouse(uint8_t type, int16_t x, int16_t y) {
     if (type == WM_RBUTTONUP) {
         /* Show context menu */
         dt_ctx_index = idx;
-        menu_item_t items[4];
-        uint8_t count = 0;
-
-        if (idx >= 0) {
-            strncpy(items[count].text, "Open", sizeof(items[0].text));
-            items[count].command_id = DT_CMD_OPEN;
-            items[count].flags = 0;
-            items[count].accel_key = 0;
-            count++;
-
-            items[count] = (menu_item_t){ "", 0, MIF_SEPARATOR, 0 };
-            count++;
-
-            strncpy(items[count].text, "Remove", sizeof(items[0].text));
-            items[count].command_id = DT_CMD_REMOVE;
-            items[count].flags = 0;
-            items[count].accel_key = 0;
-            count++;
-        } else {
-            strncpy(items[count].text, "Sort by Name", sizeof(items[0].text));
-            items[count].command_id = DT_CMD_SORT_NAME;
-            items[count].flags = 0;
-            items[count].accel_key = 0;
-            count++;
-
-            strncpy(items[count].text, "Refresh", sizeof(items[0].text));
-            items[count].command_id = DT_CMD_REFRESH;
-            items[count].flags = 0;
-            items[count].accel_key = 0;
-            count++;
-        }
-
-        /* Use HWND_NULL as owner — we'll intercept the result in
-         * desktop_handle_command which is called from compositor. */
-        menu_popup_show(HWND_NULL, x, y, items, count);
+        dt_show_context_menu(x, y, idx >= 0);
         return true;
     }
 
@@ -704,7 +708,26 @@ bool desktop_key(uint8_t scancode, uint8_t modifiers) {
         }
         return true;
 
+    case 0x65: /* Menu/Application key */
+    open_desktop_context_menu: {
+        /* Open context menu at selected shortcut position */
+        int16_t cx, cy;
+        if (dt_selected >= 0 && dt_selected < dt_count) {
+            dt_ctx_index = dt_selected;
+            dt_get_cell_rect(dt_selected, &cx, &cy);
+            /* Position menu just below the icon (icon is 32px tall at cy+2) */
+            dt_show_context_menu(cx + DT_CELL_W / 2, cy + 36, true);
+        } else {
+            dt_ctx_index = -1;
+            dt_show_context_menu(DT_MARGIN_X + 10, DT_MARGIN_Y + 10, false);
+        }
+        return true;
+    }
+
     default:
+        /* Ctrl+Space: also open context menu */
+        if (scancode == 0x2C /* Space */ && (modifiers & KMOD_CTRL))
+            goto open_desktop_context_menu;
         break;
     }
     return false;

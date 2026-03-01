@@ -367,6 +367,8 @@ static void compositor_task(void *params) {
             cursor_overlay_erase();
             boot_cursor_hidden = true;
             wm_force_full_repaint();
+            /* Focus desktop if shortcuts exist and no windows are open */
+            if (desktop_has_shortcuts()) desktop_focus();
         }
 
         /* Process deferred swap resumes — an exiting app sets a flag,

@@ -474,7 +474,10 @@ void menu_popup_show(hwnd_t owner, int16_t sx, int16_t sy,
     if (menu_is_open()) menu_close();
 
     /* Close any existing popup (prevents stacking) */
-    if (popup_visible) menu_popup_close();
+    if (popup_visible) {
+        menu_popup_close();
+        wm_force_full_repaint();  /* clear stale pixels from old position */
+    }
 
     popup_owner = owner;
     popup_count = count > MENU_POPUP_MAX ? MENU_POPUP_MAX : count;
@@ -777,9 +780,10 @@ bool menu_popup_mouse(uint8_t type, int16_t x, int16_t y) {
         return true;
     }
 
-    /* Click outside — close popup */
+    /* Click outside — close popup and clear stale pixels */
     if (type == WM_LBUTTONDOWN || type == WM_RBUTTONDOWN) {
         menu_popup_close();
+        wm_force_full_repaint();
         return false;
     }
 

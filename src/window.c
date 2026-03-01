@@ -268,6 +268,8 @@ void wm_destroy_window(hwnd_t hwnd) {
             hwnd_t next = z_stack[z_count - 1];
             focus_hwnd = next;
             windows[next - 1].flags |= WF_FOCUSED | WF_DIRTY | WF_FRAME_DIRTY;
+        } else if (desktop_has_shortcuts()) {
+            desktop_focus();
         }
     }
 
@@ -294,6 +296,27 @@ void wm_minimize_window(hwnd_t hwnd) {
     windows[hwnd - 1].state = WS_MINIMIZED;
     windows[hwnd - 1].flags &= ~WF_VISIBLE;
     wm_add_expose_rect(&frame);
+
+    /* If minimizing the focused window, try to focus next visible window;
+     * if none remain, focus the desktop. */
+    if (focus_hwnd == hwnd) {
+        focus_hwnd = HWND_NULL;
+        windows[hwnd - 1].flags &= ~WF_FOCUSED;
+        /* Find topmost visible non-minimized window */
+        for (int i = z_count - 1; i >= 0; i--) {
+            hwnd_t h = z_stack[i];
+            if (valid_hwnd(h) &&
+                (windows[h - 1].flags & WF_VISIBLE) &&
+                windows[h - 1].state != WS_MINIMIZED) {
+                wm_set_focus(h);
+                break;
+            }
+        }
+        if (focus_hwnd == HWND_NULL && desktop_has_shortcuts()) {
+            desktop_focus();
+        }
+    }
+
     taskbar_invalidate();
 }
 

@@ -667,6 +667,25 @@ static void fm_paint_statusbar(filemanager_t *fm, int16_t cw, int16_t ch) {
 
 }
 
+/* Truncate a filename with "..." ellipsis to fit within max_px pixels.
+ * Writes into buf (must have room for at least max_chars+1 bytes). */
+static void fm_ellipsis(char *buf, size_t bufsz, const char *name, int max_px) {
+    int max_chars = max_px / FONT_UI_WIDTH;
+    int len = (int)strlen(name);
+    if (max_chars < 4) max_chars = 4;
+    if ((int)bufsz - 1 < max_chars) max_chars = (int)bufsz - 1;
+    if (len <= max_chars) {
+        strncpy(buf, name, bufsz);
+        buf[bufsz - 1] = '\0';
+    } else {
+        memcpy(buf, name, max_chars - 3);
+        buf[max_chars - 3] = '.';
+        buf[max_chars - 2] = '.';
+        buf[max_chars - 1] = '.';
+        buf[max_chars] = '\0';
+    }
+}
+
 /*==========================================================================
  * Painting: large icon view
  *=========================================================================*/
@@ -718,10 +737,9 @@ static void fm_paint_large_icons(filemanager_t *fm, int16_t cw, int16_t ch) {
             wd_icon_32(cx + (LARGE_CELL_W - 32) / 2, cy + 2, icon);
         }
 
-        /* Filename (truncated) */
-        char label[14];
-        strncpy(label, e->name, 13);
-        label[13] = '\0';
+        /* Filename (ellipsis-truncated to fit cell width) */
+        char label[32];
+        fm_ellipsis(label, sizeof(label), e->name, LARGE_CELL_W - 4);
         int tw = (int)strlen(label) * FONT_UI_WIDTH;
         int tx = cx + (LARGE_CELL_W - tw) / 2;
 
@@ -764,8 +782,10 @@ static void fm_paint_small_icons(filemanager_t *fm, int16_t cw, int16_t ch) {
         }
 
         wd_icon_16(cx + 2, cy + 2, fn_get_icon_16(e));
+        char slabel[32];
+        fm_ellipsis(slabel, sizeof(slabel), e->name, SMALL_CELL_W - 22);
         wd_text_ui(cx + 20, cy + (SMALL_CELL_H - FONT_UI_HEIGHT) / 2,
-                   e->name, fg, bg);
+                   slabel, fg, bg);
     }
 }
 
@@ -843,10 +863,12 @@ static void fm_paint_list(filemanager_t *fm, int16_t cw, int16_t ch) {
             wd_fill_rect(0, ry, file_w, LIST_ROW_H, COLOR_BLUE);
         }
 
-        /* Icon + name */
+        /* Icon + name (ellipsis-truncated to name column width) */
         wd_icon_16(2, ry + 1, fn_get_icon_16(e));
+        char llabel[64];
+        fm_ellipsis(llabel, sizeof(llabel), e->name, name_w - 24);
         wd_text_ui(20, ry + (LIST_ROW_H - FONT_UI_HEIGHT) / 2,
-                   e->name, fg, bg);
+                   llabel, fg, bg);
 
         /* Size */
         if (!(e->attrib & AM_DIR)) {
@@ -1896,6 +1918,44 @@ static bool fm_event(hwnd_t hwnd, const window_event_t *event) {
         /* F2: rename */
         if (sc == 0x3B /* HID F2 */) {
             fm_rename_selected(fm);
+            return true;
+        }
+        /* Menu/Application key (0x65) or Ctrl+Space: open context menu */
+        if (sc == 0x65 || (sc == 0x2C && (mods & KMOD_CTRL))) {
+            window_t *win = wm_get_window(hwnd);
+            if (win) {
+                point_t origin = theme_client_origin(&win->frame, win->flags);
+                int16_t sx, sy;
+                if (fm->focus_index >= 0 && fm->focus_index < (int)fm->entry_count) {
+                    /* Position at the focused item */
+                    int16_t file_w = cw - FN_SCROLLBAR_W;
+                    int cols, cell_w, cell_h;
+                    int extra = 0;
+                    switch (fm->view_mode) {
+                    case FN_VIEW_LARGE_ICONS:
+                        cell_w = LARGE_CELL_W; cell_h = LARGE_CELL_H;
+                        cols = file_w / cell_w; if (cols < 1) cols = 1;
+                        break;
+                    case FN_VIEW_SMALL_ICONS:
+                        cell_w = SMALL_CELL_W; cell_h = SMALL_CELL_H;
+                        cols = file_w / cell_w; if (cols < 1) cols = 1;
+                        break;
+                    default: /* list */
+                        cell_w = file_w; cell_h = LIST_ROW_H;
+                        cols = 1; extra = LIST_HDR_H;
+                        break;
+                    }
+                    int col = fm->focus_index % cols;
+                    int row = fm->focus_index / cols;
+                    sx = origin.x + col * cell_w + cell_w / 2;
+                    sy = origin.y + FN_HEADER_HEIGHT + extra + row * cell_h - fm->scroll_y + cell_h / 2;
+                } else {
+                    /* No focused item — show at center of file area */
+                    sx = origin.x + cw / 2;
+                    sy = origin.y + FN_HEADER_HEIGHT + 20;
+                }
+                fm_show_context_menu(fm, sx, sy, fm->focus_index >= 0);
+            }
             return true;
         }
         return false;
