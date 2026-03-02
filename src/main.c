@@ -432,7 +432,11 @@ void spawn_terminal_window(void) {
     }
     terminal_t *t = terminal_from_hwnd(hwnd);
     if (!t) return;
-    shell_start(t);
+    if (!shell_start(t)) {
+        printf("spawn_terminal_window: shell_start failed\n");
+        terminal_destroy(t);
+        return;
+    }
     wm_set_focus(hwnd);
     taskbar_invalidate();
 }

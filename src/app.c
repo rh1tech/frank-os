@@ -1151,13 +1151,13 @@ a6:
 
     printf("[load_app] load req_ver...\n");
     bootb_ctx->req_ver_fn = load_sec2mem_wrapper(pctx, req_idx, try_to_use_flash);
-    printf("[load_app] req_ver=%p bootb=%p\n", (void*)(uintptr_t)bootb_ctx->req_ver_fn, bootb_ctx);
+    printf("[load_app] load _init... heap=%u\n", (unsigned)xPortGetFreeHeapSize());
     bootb_ctx->_init_fn   = load_sec2mem_wrapper(pctx, _init_idx, try_to_use_flash);
-    printf("[load_app] _init=%p\n", (void*)(uintptr_t)bootb_ctx->_init_fn);
+    printf("[load_app] load main... heap=%u\n", (unsigned)xPortGetFreeHeapSize());
     bootb_ctx->main_fn    = load_sec2mem_wrapper(pctx, main_idx, try_to_use_flash);
-    printf("[load_app] main=%p\n", (void*)(uintptr_t)bootb_ctx->main_fn);
+    printf("[load_app] load _fini... heap=%u\n", (unsigned)xPortGetFreeHeapSize());
     bootb_ctx->_fini_fn   = load_sec2mem_wrapper(pctx, _fini_idx, try_to_use_flash);
-    printf("[load_app] _fini=%p\n", (void*)(uintptr_t)bootb_ctx->_fini_fn);
+    printf("[load_app] load sig... heap=%u\n", (unsigned)xPortGetFreeHeapSize());
     bootb_ctx->sig_fn     = load_sec2mem_wrapper(pctx, sig_idx, try_to_use_flash);
     bootb_ctx->flags_fn   = load_sec2mem_wrapper(pctx, flags_idx, try_to_use_flash);
     g_sram_for_code = false;   /* reset for next app load */
@@ -1295,9 +1295,9 @@ void __in_hfa() exec_sync(cmd_ctx_t* ctx) {
     vTaskSetThreadLocalStoragePointer(th, 0, ctx);
 
     bootb_ctx_t* bootb_ctx = ctx->pboot_ctx;
-    printf("[exec_sync] bootb=%p req_ver=%p main=%p\n",
-           bootb_ctx, (void*)(uintptr_t)bootb_ctx->req_ver_fn,
-           (void*)(uintptr_t)bootb_ctx->main_fn);
+    #if DEBUG_APP_LOAD
+    goutf("__required_m_api_verion: [%p]\n", bootb_ctx->req_ver_fn);
+    #endif
     int rav = bootb_ctx->req_ver_fn ? bootb_ctx->req_ver_fn() : MIN_API_VERSION;
     printf("[exec_sync] rav=%d\n", rav);
     #if DEBUG_APP_LOAD
@@ -1395,9 +1395,12 @@ static TaskHandle_t create_app_task_psram(
             return xTaskCreateStatic(fn, name, 2048, param, priority,
                                      mem->stack, &mem->tcb);
         }
-    } else {
+    } else if (!swap_is_stack_busy()) {
         /* Foreground app: TCB in SRAM (accessed by PendSV ISR, must be
-         * fast), stack is the shared SRAM block. */
+         * fast), stack is the shared SRAM block.
+         * Only one task may use the shared stack at a time; if another
+         * terminal already has a foreground app running, fall through
+         * to the PSRAM/heap fallback below. */
         app_tcb_mem_t* mem = (app_tcb_mem_t*)pvPortCalloc(1, sizeof(app_tcb_mem_t));
         if (!mem && psram_is_available()) {
             mem = (app_tcb_mem_t*)psram_alloc(sizeof(app_tcb_mem_t));
@@ -1405,6 +1408,7 @@ static TaskHandle_t create_app_task_psram(
         }
         if (mem) {
             *out_mem = mem;
+            swap_stack_acquire();
             /* Re-fill shared stack with watermark before each new task */
             StackType_t *ss = swap_get_shared_stack();
             uint32_t words = swap_get_stack_words();
@@ -1460,10 +1464,11 @@ static void __in_hfa() vAppDetachedTask(void *pv) {
      * is not processed until after vTaskDelete — prevents the compositor
      * from overwriting our shared stack while we're still using it. */
     vTaskPrioritySet(NULL, configMAX_PRIORITIES - 1);
+    void* mem = ctx->task_mem;
+    if (mem) swap_stack_release();  /* release only if we used shared stack */
     /* Unregister from swap manager and auto-resume previous app */
     swap_unregister_by_task(th);
     swap_resume_previous();
-    void* mem = ctx->task_mem;
     remove_ctx(ctx);
     #if DEBUG_APP_LOAD
     goutf("vAppDetachedTask: [%p] <<<\n", ctx);
@@ -1533,9 +1538,14 @@ void __in_hfa() __exit(int status) {
      * is not processed until after vTaskDelete — prevents the compositor
      * from overwriting our shared stack while we're still using it. */
     vTaskPrioritySet(NULL, configMAX_PRIORITIES - 1);
-    /* Unregister from swap and resume previous app */
-    swap_unregister_by_task(th);
-    swap_resume_previous();
+    /* Swap operations only for detached (parentless) tasks.
+     * Attached tasks have a parent shell that handles swap_stack_release
+     * and doesn't participate in the window swap system. */
+    if (!ctx || !ctx->parent_task) {
+        if (mem) swap_stack_release();  /* release only if we used shared stack */
+        swap_unregister_by_task(th);
+        swap_resume_previous();
+    }
     if (mem) task_mem_defer_free(mem);
     vTaskDelete( NULL );
     __unreachable();
@@ -1577,24 +1587,47 @@ void __in_hfa() exec(cmd_ctx_t* ctx) { // like init proc flow
             #endif
             ctx->parent_task = xTaskGetCurrentTaskHandle();
             kbd_set_stdin_owner(ctx->pid);
+            deliver_signals(ctx);
+            /* Drain stale task notifications (e.g. from SIGWINCH delivery
+             * which uses xTaskNotifyGive to wake tasks).  Must happen
+             * BEFORE creating the child: with configUSE_TIME_SLICING=1 a
+             * tick after create could let the child run, finish, and send
+             * its notification — a post-create drain would eat it. */
+            ulTaskNotifyTake(pdTRUE, 0);
             void* tmem;
             create_app_task_psram(vAppAttachedTask, ctx->argv[0], ctx, APP_TASK_PRIORITY, &tmem, false);
             ctx->task_mem = tmem;
             #if DEBUG_APP_LOAD
             goutf("ctx [%p], ulTaskNotifyTake[%p]\n", ctx, ctx->parent_task);
             #endif
-            deliver_signals(ctx);
-            /* Drain stale task notifications (e.g. from SIGWINCH delivery
-             * which uses xTaskNotifyGive to wake tasks).  Without this,
-             * a pending notification causes ulTaskNotifyTake to return
-             * immediately, making exec() think the child already finished. */
-            while (ulTaskNotifyTake(pdTRUE, 0)) {}
             ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+            /* Terminal force-closed (Alt+F4) while child was running?
+             * Kill the child task and clean up before returning to the
+             * shell loop, which will detect t->closing and exit. */
+            if (ctx->term && ctx->term->closing) {
+                vTaskPrioritySet(NULL, configMAX_PRIORITIES - 1);
+                TaskHandle_t child = ctx->task;
+                eTaskState st = eTaskGetState(child);
+                if (st != eDeleted) {
+                    vTaskDelete(child);
+                    /* Child didn't get to defer-free its own task_mem */
+                    if (tmem) task_mem_defer_free(tmem);
+                }
+                if (tmem) swap_stack_release();
+                cleanup_bootb_ctx(ctx);
+                set_usb_detached_handler(0);
+                set_scancode_handler(0);
+                set_cp866_handler(0);
+                kbd_set_stdin_owner(1);
+                cleanup_ctx(ctx);
+                vTaskPrioritySet(NULL, 1);
+                return;
+            }
+            if (tmem) swap_stack_release();  /* release only if child used shared stack */
             deliver_signals(ctx);
             #if DEBUG_APP_LOAD
             goutf("ctx [%p], ulTaskNotifyTake passed\n", ctx);
             #endif
-            printf("[exec] cleanup_bootb_ctx...\n");
             cleanup_bootb_ctx(ctx);
             // === child finished: cleanup global handlers (W/A safety net) ===
             set_usb_detached_handler(0);

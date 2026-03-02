@@ -226,6 +226,9 @@ static void terminal_force_close(terminal_t *t, hwnd_t hwnd) {
 
     t->closing = true;
     if (t->input_sem) xSemaphoreGive(t->input_sem);
+    /* Wake the shell task if it's blocked in ulTaskNotifyTake
+     * (waiting for a child ELF app to finish via exec()) */
+    if (t->shell_task) xTaskNotifyGive(t->shell_task);
     if (t->blink_timer) {
         xTimerStop(t->blink_timer, 0);
         xTimerDelete(t->blink_timer, 0);

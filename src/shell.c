@@ -478,6 +478,12 @@ static void shell_task(void *pv) {
  * Public API
  *=========================================================================*/
 
-void shell_start(terminal_t *term) {
-    xTaskCreate(shell_task, "shell", 4096, (void *)term, 1, NULL);
+bool shell_start(terminal_t *term) {
+    TaskHandle_t h = NULL;
+    BaseType_t rc = xTaskCreate(shell_task, "shell", 4096, (void *)term, 1, &h);
+    if (rc == pdPASS && h != NULL) {
+        term->shell_task = h;
+        return true;
+    }
+    return false;
 }

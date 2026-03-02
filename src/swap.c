@@ -22,6 +22,22 @@
 
 static StackType_t shared_stack[SWAP_STACK_WORDS] __attribute__((aligned(8)));
 
+/* True when the shared stack is actively in use by a running task.
+ * Prevents a second foreground task from corrupting the first. */
+static volatile bool shared_stack_busy;
+
+bool swap_is_stack_busy(void) {
+    return shared_stack_busy;
+}
+
+void swap_stack_acquire(void) {
+    shared_stack_busy = true;
+}
+
+void swap_stack_release(void) {
+    shared_stack_busy = false;
+}
+
 /*==========================================================================
  * Swap table — one entry per registered app window
  *=========================================================================*/
@@ -186,6 +202,7 @@ void swap_suspend(hwnd_t hwnd) {
 
     /* 3. Set suspended flag on the window */
     e->suspended = true;
+    shared_stack_busy = false;  /* stack saved to PSRAM — available now */
     window_t *win = wm_get_window(hwnd);
     if (win)
         win->flags |= WF_SUSPENDED;
@@ -196,6 +213,7 @@ void swap_resume(hwnd_t hwnd) {
     if (!e || !e->suspended) return;
     if (!e->psram_save) return;
 
+    shared_stack_busy = true;  /* about to restore and run on it */
     /* 1. Restore stack from PSRAM BEFORE resuming */
     memcpy(shared_stack, e->psram_save, SWAP_STACK_BYTES);
 

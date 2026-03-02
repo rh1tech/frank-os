@@ -17,17 +17,17 @@
 /*
  * Channel used by the legacy pcm_init / pcm_write API.
  *
- * Stored in FreeRTOS TLS slot 1 (slot 0 = cmd_ctx_t) so each app task has
- * its own independent handle.  This prevents one app (e.g. pshell) calling
- * pcm_init() from clobbering another app's open channel (e.g. ZX Spectrum).
+ * Stored in FreeRTOS TLS slot 2 so each app task has its own independent
+ * handle.  Slot 0 = cmd_ctx_t, slot 1 = terminal_t (TERMINAL_TLS_SLOT).
  *
  * Encoding: store (ch + 1) so that ch == -1 (not open) maps to 0 / NULL.
  */
+#define PCM_TLS_SLOT 2
 static inline int get_pcm_channel(void) {
-    return (int)(uintptr_t)pvTaskGetThreadLocalStoragePointer(NULL, 1) - 1;
+    return (int)(uintptr_t)pvTaskGetThreadLocalStoragePointer(NULL, PCM_TLS_SLOT) - 1;
 }
 static inline void set_pcm_channel(int ch) {
-    vTaskSetThreadLocalStoragePointer(NULL, 1, (void *)(uintptr_t)(ch + 1));
+    vTaskSetThreadLocalStoragePointer(NULL, PCM_TLS_SLOT, (void *)(uintptr_t)(ch + 1));
 }
 
 void init_sound() {

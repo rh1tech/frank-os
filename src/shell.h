@@ -17,8 +17,9 @@ extern "C" {
 
 /* Start the built-in shell on a terminal.
  * Spawns a FreeRTOS task that reads input from the terminal and
- * executes commands (ELF apps from SD card or built-in commands). */
-void shell_start(terminal_t *term);
+ * executes commands (ELF apps from SD card or built-in commands).
+ * Returns true on success (task created). */
+bool shell_start(terminal_t *term);
 
 #ifdef __cplusplus
 }

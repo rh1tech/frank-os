@@ -50,7 +50,7 @@
 /* Task */
 #define configMAX_TASK_NAME_LEN                 16
 #define configUSE_CO_ROUTINES                   0
-#define configNUM_THREAD_LOCAL_STORAGE_POINTERS 2
+#define configNUM_THREAD_LOCAL_STORAGE_POINTERS 3
 
 /* Timer */
 #define configUSE_TIMERS                        1

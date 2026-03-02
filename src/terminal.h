@@ -81,6 +81,10 @@ struct terminal {
 
     /* Closing flag — set by WM_CLOSE handler, checked by shell task */
     volatile bool          closing;
+
+    /* Shell task handle — so terminal_force_close can wake the shell
+     * when it's blocked in ulTaskNotifyTake waiting for a child app */
+    TaskHandle_t           shell_task;
 };
 
 /* Create a terminal window. Returns the window handle. */

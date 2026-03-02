@@ -91,4 +91,12 @@ StackType_t *swap_get_shared_stack(void);
 /* Return the stack size in words */
 uint32_t swap_get_stack_words(void);
 
+/* Shared stack usage tracking — prevents two concurrent foreground tasks
+ * from using the same stack buffer (e.g. two terminal shells each running
+ * an app).  When the stack is busy, callers should allocate a separate
+ * stack (e.g. via PSRAM or heap). */
+bool swap_is_stack_busy(void);
+void swap_stack_acquire(void);
+void swap_stack_release(void);
+
 #endif /* SWAP_H */
