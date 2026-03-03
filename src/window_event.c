@@ -73,6 +73,7 @@ static int16_t drag_anchor_y;
 static rect_t  drag_orig;                /* window rect at drag start */
 static rect_t  drag_rect;                /* proposed rect during drag */
 static uint8_t drag_edge;                /* HT_BORDER_* for resize */
+static bool    drag_moved;               /* true after first mouse move */
 
 /* Drag outline overlay — XOR drawn on show buffer, zero extra RAM.
  * drag_ol_rect tracks the position where the outline was last stamped
@@ -261,6 +262,7 @@ static void begin_drag(hwnd_t hwnd, uint8_t mode, uint8_t edge,
     /* Suspend the app while dragging — apps that write directly to the
      * framebuffer (e.g. ZX Spectrum) cause artifacts if they keep
      * rendering while the window outline moves. */
+    drag_moved = false;
     swap_suspend(hwnd);
 }
 
@@ -427,38 +429,29 @@ void wm_handle_mouse_input(uint8_t type, int16_t x, int16_t y, uint8_t buttons) 
             } else {
                 update_resize_rect(x, y);
             }
+            drag_moved = true;
             compositor_dirty = 1;
             return;
         }
         if (type == WM_LBUTTONUP) {
-            /* Erase overlays from show buffer before recomposite */
-            if (!cursor_overlay_is_locked()) {
-                cursor_overlay_erase();
-                drag_overlay_erase();
-            } else {
-                /* Compositor holds the lock — mark overlay inactive so the
-                 * next compositor cycle won't try to XOR-erase pixels that
-                 * the full repaint below will overwrite.  This prevents
-                 * stale XOR artifacts from the outline. */
-                drag_overlay_reset();
-            }
-            bool resized = (drag_mode == DRAG_RESIZE);
-            wm_set_window_rect(drag_hwnd, drag_rect.x, drag_rect.y,
-                                drag_rect.w, drag_rect.h);
-            /* Resume the app after the window has been repositioned */
-            swap_resume(drag_hwnd);
+            /* Clear drag state FIRST.  The compositor reads drag_mode
+             * to decide whether to stamp a new XOR outline; clearing
+             * it before triggering the compositor prevents a race where
+             * the compositor stamps one final outline after we erase
+             * on the dual-core RP2350. */
+            hwnd_t saved_hwnd = drag_hwnd;
             drag_mode = DRAG_NONE;
             drag_hwnd = HWND_NULL;
             cursor_set_type(CURSOR_ARROW);
-            /* After drag-resize, force a full repaint to clear any XOR
-             * outline artifacts and stale pixels from the old size. */
-            if (resized)
-                wm_force_full_repaint();
-            if (!cursor_overlay_is_locked()) {
-                int16_t cx, cy;
-                wm_get_cursor_pos(&cx, &cy);
-                cursor_overlay_stamp(cx, cy);
-            }
+            wm_set_window_rect(saved_hwnd, drag_rect.x, drag_rect.y,
+                                drag_rect.w, drag_rect.h);
+            /* Resume the app after the window has been repositioned */
+            swap_resume(saved_hwnd);
+            /* Don't manipulate overlays from the input task — the
+             * compositor handles XOR outline erase in its synchronized
+             * cycle, avoiding the TOCTOU race on cursor_overlay_is_locked.
+             * wm_set_window_rect() adds an expose rect for the old frame
+             * and marks WF_DIRTY|WF_FRAME_DIRTY for the selective path. */
             compositor_dirty = 1;
             return;
         }
@@ -735,6 +728,10 @@ void wm_handle_mouse_input(uint8_t type, int16_t x, int16_t y, uint8_t buttons) 
 
 bool wm_get_drag_outline(rect_t *outline) {
     if (drag_mode == DRAG_NONE) return false;
+    /* Suppress outline until the mouse has actually moved.  Without
+     * this, the first outline sits exactly on the window border and
+     * the XOR corrupts the border pixels on the single-buffer display. */
+    if (!drag_moved) return false;
     if (outline) *outline = drag_rect;
     return true;
 }

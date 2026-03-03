@@ -98,7 +98,7 @@ static inline int fa_rand(void) {
  *=========================================================================*/
 
 typedef enum { PS_STOPPED, PS_PLAYING, PS_PAUSED } play_state_t;
-typedef enum { FMT_MP3, FMT_MOD } audio_format_t;
+typedef enum { FMT_MP3, FMT_MOD, FMT_MIDI } audio_format_t;
 
 typedef struct {
     char path[MAX_PATH_LEN];
@@ -123,6 +123,9 @@ typedef struct {
     uint8_t        *mod_data;       /* MOD file loaded into memory */
     uint32_t        mod_data_size;
 
+    /* MIDI playback state */
+    midi_opl_t     *midi;
+
     /* Audio read buffer */
     uint8_t         read_buf[READ_BUF_SIZE];
     int             read_valid, read_offset;
@@ -145,6 +148,10 @@ typedef struct {
     /* Playlist (dynamically allocated — may live in PSRAM) */
     playlist_entry_t *playlist;
     int              pl_count, pl_current, pl_selected, pl_scroll;
+    scrollbar_t      pl_scrollbar;
+
+    /* Deferred play: path set by WM task, picked up by app task */
+    char            pending_path[MAX_PATH_LEN];
 
     /* System */
     TimerHandle_t   ui_timer;
@@ -304,6 +311,11 @@ static audio_format_t detect_format(const char *path) {
         if ((dot[1]=='m'||dot[1]=='M') && (dot[2]=='o'||dot[2]=='O')
             && (dot[3]=='d'||dot[3]=='D') && dot[4]=='\0')
             return FMT_MOD;
+        if ((dot[1]=='m'||dot[1]=='M') && (dot[2]=='i'||dot[2]=='I')
+            && (dot[3]=='d'||dot[3]=='D')) {
+            if (dot[4]=='\0') return FMT_MIDI;
+            if ((dot[4]=='i'||dot[4]=='I') && dot[5]=='\0') return FMT_MIDI;
+        }
     }
     return FMT_MP3;
 }
@@ -328,6 +340,24 @@ static int decode_frame_mod(frankamp_t *fa) {
 }
 
 /*==========================================================================
+ * MIDI decoding
+ *=========================================================================*/
+
+#define MIDI_CHUNK_FRAMES  1024  /* ~23ms at 44100 Hz */
+
+static int decode_frame_midi(frankamp_t *fa) {
+    int nf = midi_opl_render(fa->midi, fa->pcm_buf, MIDI_CHUNK_FRAMES);
+    /* Apply volume */
+    if (fa->volume < 100 && nf > 0) {
+        int shift = ((100 - fa->volume) * 8 + 50) / 100;
+        if (shift > 0)
+            for (int i = 0; i < nf * 2; i++)
+                fa->pcm_buf[i] >>= shift;
+    }
+    return nf;
+}
+
+/*==========================================================================
  * Playback control
  *=========================================================================*/
 
@@ -342,7 +372,12 @@ static void play_stop(frankamp_t *fa) {
         fa->audio_active = false;
     }
 
-    if (fa->format == FMT_MOD) {
+    if (fa->format == FMT_MIDI) {
+        if (fa->midi) {
+            midi_opl_free(fa->midi);
+            fa->midi = 0;
+        }
+    } else if (fa->format == FMT_MOD) {
         hxcmod_unload(&fa->mod_ctx);
         if (fa->mod_data) {
             psram_free(fa->mod_data);  /* handles both PSRAM and SRAM */
@@ -373,7 +408,38 @@ static bool play_start(frankamp_t *fa, int playlist_idx) {
     const char *path = fa->playlist[playlist_idx].path;
     fa->format = detect_format(path);
 
-    if (fa->format == FMT_MOD) {
+    if (fa->format == FMT_MIDI) {
+        /* === MIDI playback === */
+        fa->midi = midi_opl_init();
+        if (!fa->midi) {
+            dbg_printf("[frankamp] midi_opl_init failed\n");
+            return false;
+        }
+        midi_opl_set_loop(fa->midi, fa->repeat);
+        if (!midi_opl_load(fa->midi, path)) {
+            dbg_printf("[frankamp] midi_opl_load failed: %s\n", path);
+            midi_opl_free(fa->midi);
+            fa->midi = 0;
+            return false;
+        }
+
+        fa->info.samprate = 44100;
+        fa->info.nChans = 2;
+        fa->info.bitrate = 0;
+        fa->total_ms = 0;  /* MIDI duration unknown */
+        fa->elapsed_ms = 0;
+
+        pcm_init(44100, 2);
+        fa->audio_active = true;
+        fa->play_state = PS_PLAYING;
+
+        /* Decode and write first chunk to kick off DMA */
+        int nf = decode_frame_midi(fa);
+        if (nf > 0) pcm_write(fa->pcm_buf, nf);
+
+        dbg_printf("[frankamp] playing MIDI: %s (44100 Hz, stereo, OPL FM)\n",
+                   path);
+    } else if (fa->format == FMT_MOD) {
         /* === MOD playback === */
         FIL f;
         FRESULT res = f_open(&f, path, FA_READ | FA_OPEN_EXISTING);
@@ -515,6 +581,13 @@ static void play_prev(frankamp_t *fa) {
 
 /* Decode one frame and push to I2S (blocking).  Returns false at EOF. */
 static bool audio_step(frankamp_t *fa) {
+    if (fa->format == FMT_MIDI) {
+        int nf = decode_frame_midi(fa);
+        if (nf <= 0) return false;
+        pcm_write(fa->pcm_buf, nf);
+        fa->elapsed_ms += nf * 1000 / 44100;
+        return midi_opl_playing(fa->midi);
+    }
     if (fa->format == FMT_MOD) {
         int nf = decode_frame_mod(fa);
         pcm_write(fa->pcm_buf, nf);
@@ -782,7 +855,10 @@ static void main_paint(hwnd_t hwnd) {
     /* Bitrate info line (dark gray on white) */
     if (fa->play_state != PS_STOPPED) {
         char info_str[40];
-        if (fa->format == FMT_MOD) {
+        if (fa->format == FMT_MIDI) {
+            snprintf(info_str, sizeof(info_str), "MIDI  %d Hz  OPL FM",
+                     fa->info.samprate);
+        } else if (fa->format == FMT_MOD) {
             snprintf(info_str, sizeof(info_str), "MOD  %d Hz  stereo",
                      fa->info.samprate);
         } else if (fa->info.bitrate > 0) {
@@ -871,8 +947,24 @@ static void main_paint(hwnd_t hwnd) {
     wd_hline(0, PL_SEP_Y, CLIENT_W, COLOR_DARK_GRAY);
     wd_hline(0, PL_SEP_Y + 1, CLIENT_W, COLOR_WHITE);
 
-    /* ---- Playlist area (white background) ---- */
-    wd_fill_rect(0, PL_TOP_Y, CLIENT_W, PL_ROWS * PL_ROW_H, COLOR_WHITE);
+    /* ---- Playlist area ---- */
+    /* Update scrollbar range and sync position */
+    bool pl_need_scroll = (fa->pl_count > PL_ROWS);
+    int16_t pl_w = pl_need_scroll ? (CLIENT_W - SCROLLBAR_WIDTH) : CLIENT_W;
+
+    if (pl_need_scroll) {
+        fa->pl_scrollbar.x = CLIENT_W - SCROLLBAR_WIDTH;
+        fa->pl_scrollbar.y = PL_TOP_Y;
+        fa->pl_scrollbar.w = SCROLLBAR_WIDTH;
+        fa->pl_scrollbar.h = PL_ROWS * PL_ROW_H;
+        fa->pl_scrollbar.visible = true;
+        scrollbar_set_range(&fa->pl_scrollbar, fa->pl_count, PL_ROWS);
+        scrollbar_set_pos(&fa->pl_scrollbar, fa->pl_scroll);
+    } else {
+        fa->pl_scrollbar.visible = false;
+    }
+
+    wd_fill_rect(0, PL_TOP_Y, pl_w, PL_ROWS * PL_ROW_H, COLOR_WHITE);
 
     /* Playlist rows */
     for (int row = 0; row < PL_ROWS; row++) {
@@ -894,7 +986,7 @@ static void main_paint(hwnd_t hwnd) {
             bg = COLOR_WHITE;
         }
 
-        wd_fill_rect(0, ry, CLIENT_W, PL_ROW_H, bg);
+        wd_fill_rect(0, ry, pl_w, PL_ROW_H, bg);
 
         char line[48];
         const char *prefix = (idx == fa->pl_current &&
@@ -903,6 +995,10 @@ static void main_paint(hwnd_t hwnd) {
                  prefix, idx + 1, fa->playlist[idx].title);
         wd_text_ui(4, ry + 1, line, fg, bg);
     }
+
+    /* Playlist scrollbar */
+    if (pl_need_scroll)
+        scrollbar_paint(&fa->pl_scrollbar);
 
     /* ---- Bottom bar (y=226, h=22, gray) ---- */
     wd_fill_rect(0, PL_BOTTOM_Y, CLIENT_W, PL_BOTTOM_H, COLOR_LIGHT_GRAY);
@@ -961,9 +1057,10 @@ static int vol_from_mouse(int16_t mx) {
     return v;
 }
 
-static int hit_playlist_row(int16_t mx, int16_t my) {
+static int hit_playlist_row(frankamp_t *fa, int16_t mx, int16_t my) {
     if (my < PL_TOP_Y || my >= PL_TOP_Y + PL_ROWS * PL_ROW_H) return -1;
-    (void)mx;
+    /* Exclude scrollbar area */
+    if (fa->pl_scrollbar.visible && mx >= CLIENT_W - SCROLLBAR_WIDTH) return -1;
     return (my - PL_TOP_Y) / PL_ROW_H;
 }
 
@@ -990,7 +1087,7 @@ static void do_play(frankamp_t *fa) {
 }
 
 static void do_open(frankamp_t *fa) {
-    file_dialog_open(fa->hwnd, "Open Audio", "/", ".mp3;.mod");
+    file_dialog_open(fa->hwnd, "Open Audio", "/", ".mp3;.mod;.mid;.midi");
 }
 
 /*==========================================================================
@@ -1042,8 +1139,18 @@ static bool main_event(hwnd_t hwnd, const window_event_t *ev) {
             return true;
         }
 
+        /* Playlist scrollbar */
+        {
+            int32_t new_pos;
+            if (scrollbar_event(&fa->pl_scrollbar, ev, &new_pos)) {
+                fa->pl_scroll = new_pos;
+                wm_invalidate(hwnd);
+                return true;
+            }
+        }
+
         /* Playlist row click */
-        int plrow = hit_playlist_row(mx, my);
+        int plrow = hit_playlist_row(fa, mx, my);
         if (plrow >= 0) {
             int idx = fa->pl_scroll + plrow;
             if (idx >= 0 && idx < fa->pl_count) {
@@ -1078,6 +1185,16 @@ static bool main_event(hwnd_t hwnd, const window_event_t *ev) {
     if (ev->type == WM_LBUTTONUP) {
         int16_t mx = ev->mouse.x, my = ev->mouse.y;
 
+        /* Forward to scrollbar (release thumb drag) */
+        {
+            int32_t new_pos;
+            if (scrollbar_event(&fa->pl_scrollbar, ev, &new_pos)) {
+                fa->pl_scroll = new_pos;
+                wm_invalidate(hwnd);
+                return true;
+            }
+        }
+
         if (fa->vol_drag) {
             fa->vol_drag = false;
             fa->volume = (uint8_t)vol_from_mouse(mx);
@@ -1110,6 +1227,15 @@ static bool main_event(hwnd_t hwnd, const window_event_t *ev) {
 
     /* ---- Mouse move ---- */
     if (ev->type == WM_MOUSEMOVE) {
+        /* Forward to scrollbar (thumb drag tracking) */
+        {
+            int32_t new_pos;
+            if (scrollbar_event(&fa->pl_scrollbar, ev, &new_pos)) {
+                fa->pl_scroll = new_pos;
+                wm_invalidate(hwnd);
+                return true;
+            }
+        }
         if (fa->vol_drag) {
             fa->volume = (uint8_t)vol_from_mouse(ev->mouse.x);
             wm_invalidate(hwnd);
@@ -1121,7 +1247,7 @@ static bool main_event(hwnd_t hwnd, const window_event_t *ev) {
     if (ev->type == WM_COMMAND) {
         uint16_t cmd = ev->command.id;
 
-        /* File dialog result */
+        /* File dialog result — defer play_start to the app task */
         if (cmd == DLG_RESULT_FILE) {
             const char *path = file_dialog_get_path();
             if (path && path[0]) {
@@ -1129,8 +1255,12 @@ static bool main_event(hwnd_t hwnd, const window_event_t *ev) {
                 if (idx >= 0) {
                     fa->pl_selected = idx;
                     ensure_visible(fa);
-                    if (fa->play_state == PS_STOPPED)
-                        play_start(fa, idx);
+                    if (fa->play_state == PS_STOPPED) {
+                        strncpy(fa->pending_path, fa->playlist[idx].path,
+                                MAX_PATH_LEN - 1);
+                        fa->pending_path[MAX_PATH_LEN - 1] = '\0';
+                        xTaskNotifyGive(app_task);
+                    }
                 }
             }
             wm_invalidate(hwnd);
@@ -1266,8 +1396,12 @@ static bool main_event(hwnd_t hwnd, const window_event_t *ev) {
     if (ev->type == WM_DROPFILES) {
         if (ev->dropfiles.file_path) {
             int idx = playlist_add(fa, ev->dropfiles.file_path);
-            if (idx >= 0 && fa->play_state == PS_STOPPED)
-                play_start(fa, idx);
+            if (idx >= 0 && fa->play_state == PS_STOPPED) {
+                strncpy(fa->pending_path, fa->playlist[idx].path,
+                        MAX_PATH_LEN - 1);
+                fa->pending_path[MAX_PATH_LEN - 1] = '\0';
+                xTaskNotifyGive(app_task);
+            }
             wm_invalidate(hwnd);
         }
         return true;
@@ -1277,7 +1411,13 @@ static bool main_event(hwnd_t hwnd, const window_event_t *ev) {
     if (ev->type == WM_CLOSE) {
         dbg_printf("[frankamp] WM_CLOSE\n");
 
-        play_stop(fa);
+        /* Stop audio DMA to unblock any blocked pcm_write() in the app task.
+         * Do NOT free MIDI/MP3/MOD resources here — the app task may still
+         * be inside audio_step(). Cleanup happens after the main loop exits. */
+        if (fa->audio_active) {
+            pcm_cleanup();
+            fa->audio_active = false;
+        }
 
         if (fa->ui_timer) {
             xTimerStop(fa->ui_timer, portMAX_DELAY);
@@ -1415,6 +1555,7 @@ int main(int argc, char **argv) {
     fa->pl_current = -1;
     fa->pl_selected = 0;
     fa->volume = 68;     /* ~68% of max volume (0=quiet, 100=loud) */
+    scrollbar_init(&fa->pl_scrollbar, false);  /* vertical playlist scrollbar */
 
     /* Playlist is large (~20 KB) but not time-critical — allocate
      * separately so it can spill to PSRAM, keeping SRAM free for the
@@ -1456,6 +1597,20 @@ int main(int argc, char **argv) {
     dbg_printf("[frankamp] entering main loop\n");
 
     while (!app_closing) {
+        /* Check for deferred play request from the WM task */
+        if (fa->pending_path[0] && fa->play_state == PS_STOPPED) {
+            int idx = -1;
+            for (int i = 0; i < fa->pl_count; i++) {
+                if (strcmp(fa->playlist[i].path, fa->pending_path) == 0) {
+                    idx = i;
+                    break;
+                }
+            }
+            fa->pending_path[0] = '\0';
+            if (idx >= 0)
+                play_start(fa, idx);
+        }
+
         if (!app_closing && fa->play_state == PS_PLAYING) {
             /* Decode one frame and write to I2S (blocks until DMA
              * buffer is free — ~26ms per frame at 44.1 kHz).
@@ -1468,6 +1623,9 @@ int main(int argc, char **argv) {
     }
 
     dbg_printf("[frankamp] exited main loop\n");
+
+    /* Safe to free playback resources now — no other task is using them */
+    play_stop(fa);
 
     wm_destroy_window(fa->hwnd);
     taskbar_invalidate();

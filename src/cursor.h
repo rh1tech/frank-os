@@ -66,4 +66,7 @@ void cursor_overlay_lock(void);
 void cursor_overlay_unlock(void);
 bool cursor_overlay_is_locked(void);
 
+/* True if the current cursor type differs from the stamped overlay */
+bool cursor_overlay_type_changed(void);
+
 #endif /* CURSOR_H */

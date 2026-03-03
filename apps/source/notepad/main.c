@@ -190,6 +190,15 @@ static void np_setup_menu(hwnd_t hwnd) {
     help->items[0].command_id = CMD_ABOUT;
 
     menu_set(hwnd, &bar);
+
+    /* Mark frame dirty so the compositor repaints the menu bar.
+     * Without this, menu changes after the initial paint are invisible
+     * (e.g. Dev menu not appearing when a C file is opened via argv). */
+    window_t *w = wm_get_window(hwnd);
+    if (w) {
+        w->flags |= WF_DIRTY | WF_FRAME_DIRTY;
+        wm_mark_dirty();
+    }
 }
 
 /*==========================================================================
@@ -800,8 +809,12 @@ static void np_paint_textarea(textarea_t *ta) {
     if (ta->vscroll.visible) tw -= SCROLLBAR_WIDTH;
     if (ta->hscroll.visible) th -= SCROLLBAR_WIDTH;
 
-    /* White background */
-    wd_fill_rect(tx, ty, tw, th, COLOR_WHITE);
+    /* NOTE: No full white background fill here.  Filling the entire text
+     * area with white before redrawing causes visible flicker on the
+     * single-buffer display (the user sees a white flash every 500ms
+     * when the cursor blink timer fires).  Instead, each line's
+     * background is filled individually in the rendering loop below,
+     * and the remaining area below the last line is filled afterwards. */
 
     /* Selection range */
     int32_t sel_s, sel_e;
@@ -917,6 +930,9 @@ static void np_paint_textarea(textarea_t *ta) {
             continue;
         }
 
+        /* Fill this line's background (replaces the old full-area fill) */
+        wd_fill_rect(tx, py, tw, FONT_UI_HEIGHT, COLOR_WHITE);
+
         /* Find end of line */
         int32_t line_start = offset;
         int32_t line_end = line_start;
@@ -974,6 +990,16 @@ static void np_paint_textarea(textarea_t *ta) {
         /* Advance past newline */
         offset = line_end;
         if (offset < ta->len) offset++;
+    }
+
+    /* Fill area below last drawn line (empty space in text area) */
+    {
+        int32_t last_line = ta->scroll_y / FONT_UI_HEIGHT +
+                            (th / FONT_UI_HEIGHT + 2);
+        int32_t bottom_y = ty + last_line * FONT_UI_HEIGHT - ta->scroll_y;
+        if (bottom_y < ty) bottom_y = ty;
+        if (bottom_y < ty + th)
+            wd_fill_rect(tx, bottom_y, tw, ty + th - bottom_y, COLOR_WHITE);
     }
 
     /* Draw cursor */

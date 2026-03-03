@@ -371,7 +371,7 @@ hwnd_t terminal_create(void) {
     t->hwnd = wm_create_window(
         10, 10, outer_w, outer_h,
         "Terminal",
-        WF_CLOSABLE | WF_MOVABLE | WF_RESIZABLE | WF_BORDER | WF_MENUBAR,
+        WF_CLOSABLE | WF_MOVABLE | WF_RESIZABLE | WF_BORDER | WF_MENUBAR | WF_FULLSCREENABLE,
         terminal_event,
         terminal_paint
     );

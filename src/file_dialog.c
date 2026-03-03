@@ -172,6 +172,39 @@ static bool fd_match_ext(const char *name) {
 }
 
 /*==========================================================================
+ * Sorting helpers
+ *=========================================================================*/
+
+/* Case-insensitive strcmp for sorting */
+static int fd_stricmp(const char *a, const char *b) {
+    while (*a && *b) {
+        char ca = *a, cb = *b;
+        if (ca >= 'A' && ca <= 'Z') ca += 32;
+        if (cb >= 'A' && cb <= 'Z') cb += 32;
+        if (ca != cb) return ca - cb;
+        a++; b++;
+    }
+    return (unsigned char)*a - (unsigned char)*b;
+}
+
+/* Insertion sort a range [start, end) of fd_names/fd_is_dir */
+static void fd_sort_range(int start, int end) {
+    char tmp_name[FD_NAME_LEN];
+    for (int i = start + 1; i < end; i++) {
+        memcpy(tmp_name, fd_names[i], FD_NAME_LEN);
+        uint8_t tmp_dir = fd_is_dir[i];
+        int j = i - 1;
+        while (j >= start && fd_stricmp(fd_names[j], tmp_name) > 0) {
+            memcpy(fd_names[j + 1], fd_names[j], FD_NAME_LEN);
+            fd_is_dir[j + 1] = fd_is_dir[j];
+            j--;
+        }
+        memcpy(fd_names[j + 1], tmp_name, FD_NAME_LEN);
+        fd_is_dir[j + 1] = tmp_dir;
+    }
+}
+
+/*==========================================================================
  * Read directory with FatFS
  *=========================================================================*/
 
@@ -219,6 +252,19 @@ static void fd_read_dir(void) {
         fd_count++;
     }
     f_closedir(&dir);
+
+    /* Sort directories and files alphabetically within their groups.
+     * The ".." entry (if present at index 0) stays first. */
+    int dir_start = 0;
+    if (fd_count > 0 && fd_is_dir[0] && fd_names[0][0] == '.' && fd_names[0][1] == '.')
+        dir_start = 1;  /* skip ".." entry */
+    /* Find where directories end and files begin */
+    int file_start = dir_start;
+    while (file_start < fd_count && fd_is_dir[file_start]) file_start++;
+    /* Sort directories */
+    fd_sort_range(dir_start, file_start);
+    /* Sort files */
+    fd_sort_range(file_start, fd_count);
 }
 
 /*==========================================================================

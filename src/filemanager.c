@@ -76,6 +76,13 @@ static filemanager_t *fm_from_hwnd(hwnd_t hwnd) {
     return win ? (filemanager_t *)win->user_data : NULL;
 }
 
+/* Mark specific regions dirty and request a repaint.
+ * Only the flagged parts will be redrawn in fm_paint(). */
+static void fm_invalidate(filemanager_t *fm, uint8_t flags) {
+    fm->dirty |= flags;
+    wm_invalidate(fm->hwnd);
+}
+
 /*==========================================================================
  * App icon cache — 16x16 icons read from .inf files during refresh
  *=========================================================================*/
@@ -325,7 +332,7 @@ static void fm_navigate(filemanager_t *fm, const char *new_path) {
     strncpy(fm->path, new_path, FN_PATH_MAX - 1);
     fm->path[FN_PATH_MAX - 1] = '\0';
     fm_refresh(fm);
-    wm_invalidate(fm->hwnd);
+    fm_invalidate(fm, FM_DIRTY_ALL);
 }
 
 static void fm_go_back(filemanager_t *fm) {
@@ -334,7 +341,7 @@ static void fm_go_back(filemanager_t *fm) {
     strncpy(fm->path, fm->history[fm->history_pos], FN_PATH_MAX - 1);
     fm->path[FN_PATH_MAX - 1] = '\0';
     fm_refresh(fm);
-    wm_invalidate(fm->hwnd);
+    fm_invalidate(fm, FM_DIRTY_ALL);
 }
 
 static void fm_go_up(filemanager_t *fm) {
@@ -718,9 +725,8 @@ static void fm_paint_large_icons(filemanager_t *fm, int16_t cw, int16_t ch) {
         int16_t cx = col * LARGE_CELL_W;
         int16_t cy = FN_HEADER_HEIGHT + row * LARGE_CELL_H - fm->scroll_y;
 
-        /* Clip check: between toolbar and status bar */
-        if (cy + LARGE_CELL_H < FN_HEADER_HEIGHT ||
-            cy >= ch - FN_STATUSBAR_H) continue;
+        /* Clip: skip items outside file area (toolbar / status bar) */
+        if (cy < FN_HEADER_HEIGHT || cy >= ch - FN_STATUSBAR_H) continue;
 
         bool selected = (e->sel_flags & FN_SEL_SELECTED) != 0;
         bool dimmed = (e->sel_flags & FN_SEL_CUT) != 0;
@@ -784,8 +790,7 @@ static void fm_paint_small_icons(filemanager_t *fm, int16_t cw, int16_t ch) {
         int16_t cx = col * SMALL_CELL_W;
         int16_t cy = FN_HEADER_HEIGHT + row * SMALL_CELL_H - fm->scroll_y;
 
-        if (cy + SMALL_CELL_H < FN_HEADER_HEIGHT ||
-            cy >= ch - FN_STATUSBAR_H) continue;
+        if (cy < FN_HEADER_HEIGHT || cy >= ch - FN_STATUSBAR_H) continue;
 
         bool selected = (e->sel_flags & FN_SEL_SELECTED) != 0;
         bool dimmed = (e->sel_flags & FN_SEL_CUT) != 0;
@@ -866,7 +871,7 @@ static void fm_paint_list(filemanager_t *fm, int16_t cw, int16_t ch) {
         fn_entry_t *e = &fm->entries[i];
         int16_t ry = FN_HEADER_HEIGHT + LIST_HDR_H + i * LIST_ROW_H - fm->scroll_y;
 
-        if (ry + LIST_ROW_H < FN_HEADER_HEIGHT + LIST_HDR_H ||
+        if (ry < FN_HEADER_HEIGHT + LIST_HDR_H ||
             ry >= ch - FN_STATUSBAR_H) continue;
 
         bool selected = (e->sel_flags & FN_SEL_SELECTED) != 0;
@@ -924,16 +929,22 @@ static void fm_paint(hwnd_t hwnd) {
     fm->content_height = fm_calc_content_height(fm, cw);
     fm_clamp_scroll(fm, ch);
 
+    /* Consume dirty flags — default to full repaint if none set
+     * (first paint, WM_SIZE, or external wm_invalidate). */
+    uint8_t dirty = fm->dirty ? fm->dirty : FM_DIRTY_ALL;
+    fm->dirty = 0;
+
     /* Determine whether scrollbar is needed */
     int16_t fah = fm_file_area_height(ch);
     bool need_scrollbar = (fm->content_height > fah && fah > 0);
 
-    /* Clear file area background (full width — between toolbar and status bar) */
+    /* --- File area (always repainted) --- */
+
+    /* Clear file area background (between toolbar and status bar) */
     wd_fill_rect(0, FN_HEADER_HEIGHT, cw,
                   ch - FN_HEADER_HEIGHT - FN_STATUSBAR_H, COLOR_WHITE);
 
-    /* File view — painted before toolbar so toolbar covers any
-     * items that scroll into the toolbar region */
+    /* File view */
     switch (fm->view_mode) {
     case FN_VIEW_LARGE_ICONS:
         fm_paint_large_icons(fm, cw, ch);
@@ -946,23 +957,32 @@ static void fm_paint(hwnd_t hwnd) {
         break;
     }
 
-    /* Toolbar (painted after file view to cover scrolled items) */
-    fm_paint_toolbar(fm, cw);
+    /* Toolbar — only repaint when its own state changed (button
+     * press/hover, tooltip, navigate).  File items are clipped to
+     * the file area and cannot bleed into the toolbar, so there is
+     * nothing to cover.  Skipping the toolbar entirely during plain
+     * file-selection repaints eliminates flicker on the single-buffer
+     * display. */
+    if (dirty & FM_DIRTY_TOOLBAR)
+        fm_paint_toolbar(fm, cw);
 
-    /* Scrollbar — only when content overflows */
+    /* Scrollbar — always when content overflows */
     if (need_scrollbar)
         fm_paint_scrollbar(fm, cw, ch);
 
-    /* Status bar */
+    /* Status bar — always */
     fm_paint_statusbar(fm, cw, ch);
 
-    /* Rubber band */
+    /* Rubber band — clamped to file area */
     if (fm->rubber_active) {
-        int16_t rx0 = fm->rubber_x0 < fm->rubber_x1 ? fm->rubber_x0 : fm->rubber_x1;
         int16_t ry0 = fm->rubber_y0 < fm->rubber_y1 ? fm->rubber_y0 : fm->rubber_y1;
-        int16_t rx1 = fm->rubber_x0 > fm->rubber_x1 ? fm->rubber_x0 : fm->rubber_x1;
         int16_t ry1 = fm->rubber_y0 > fm->rubber_y1 ? fm->rubber_y0 : fm->rubber_y1;
-        wd_rect(rx0, ry0, rx1 - rx0 + 1, ry1 - ry0 + 1, COLOR_BLACK);
+        int16_t rx0 = fm->rubber_x0 < fm->rubber_x1 ? fm->rubber_x0 : fm->rubber_x1;
+        int16_t rx1 = fm->rubber_x0 > fm->rubber_x1 ? fm->rubber_x0 : fm->rubber_x1;
+        if (ry0 < FN_HEADER_HEIGHT) ry0 = FN_HEADER_HEIGHT;
+        if (ry1 >= ch - FN_STATUSBAR_H) ry1 = ch - FN_STATUSBAR_H - 1;
+        if (ry0 < ry1)
+            wd_rect(rx0, ry0, rx1 - rx0 + 1, ry1 - ry0 + 1, COLOR_BLACK);
     }
 
     /* Tooltip — drawn above toolbar button in screen coordinates */
@@ -1072,7 +1092,7 @@ static void fm_do_delete(filemanager_t *fm) {
     }
     cursor_set_type(CURSOR_ARROW);
     fm_refresh(fm);
-    wm_invalidate(fm->hwnd);
+    fm_invalidate(fm, FM_DIRTY_ALL);
 }
 
 static void fm_new_folder(filemanager_t *fm) {
@@ -1161,7 +1181,7 @@ static void fm_clip_cut(filemanager_t *fm) {
             fn_clipboard.count++;
         }
     }
-    wm_invalidate(fm->hwnd);
+    fm_invalidate(fm, FM_DIRTY_FILES | FM_DIRTY_STATUSBAR);
 }
 
 static void fm_clip_copy(filemanager_t *fm) {
@@ -1357,7 +1377,7 @@ static void fm_clip_paste(filemanager_t *fm) {
 
     cursor_set_type(CURSOR_ARROW);
     fm_refresh(fm);
-    wm_invalidate(fm->hwnd);
+    fm_invalidate(fm, FM_DIRTY_ALL);
 }
 
 /*==========================================================================
@@ -1512,7 +1532,7 @@ static bool fm_scrollbar_click(filemanager_t *fm, int16_t mx, int16_t my,
     if (ry < btn_h) {
         fm->scroll_y -= scroll_step;
         fm_clamp_scroll(fm, ch);
-        wm_invalidate(fm->hwnd);
+        fm_invalidate(fm, FM_DIRTY_FILES | FM_DIRTY_SCROLLBAR);
         return true;
     }
 
@@ -1520,7 +1540,7 @@ static bool fm_scrollbar_click(filemanager_t *fm, int16_t mx, int16_t my,
     if (ry >= fah - btn_h) {
         fm->scroll_y += scroll_step;
         fm_clamp_scroll(fm, ch);
-        wm_invalidate(fm->hwnd);
+        fm_invalidate(fm, FM_DIRTY_FILES | FM_DIRTY_SCROLLBAR);
         return true;
     }
 
@@ -1531,7 +1551,7 @@ static bool fm_scrollbar_click(filemanager_t *fm, int16_t mx, int16_t my,
     if (track_h > 0 && max_scroll > 0)
         fm->scroll_y = (int16_t)((ry - track_y) * max_scroll / track_h);
     fm_clamp_scroll(fm, ch);
-    wm_invalidate(fm->hwnd);
+    fm_invalidate(fm, FM_DIRTY_FILES | FM_DIRTY_SCROLLBAR);
     return true;
 }
 
@@ -1610,7 +1630,7 @@ static bool fm_event(hwnd_t hwnd, const window_event_t *event) {
                     fm->toolbar_hover = i;
                     fm->toolbar_pressed = 1;
                     fm->tooltip_btn = -1;
-                    wm_invalidate(hwnd);
+                    fm_invalidate(fm, FM_DIRTY_TOOLBAR);
                     return true;
                 }
             }
@@ -1655,7 +1675,7 @@ static bool fm_event(hwnd_t hwnd, const window_event_t *event) {
                 else { fm->sort_column = 2; fm->sort_ascending = 1; }
             }
             fm_refresh(fm);
-            wm_invalidate(hwnd);
+            fm_invalidate(fm, FM_DIRTY_ALL);
             return true;
         }
 
@@ -1709,7 +1729,7 @@ static bool fm_event(hwnd_t hwnd, const window_event_t *event) {
             fm->rubber_y0 = fm->rubber_y1 = my;
             fm->last_click_index = -1;
         }
-        wm_invalidate(hwnd);
+        fm_invalidate(fm, FM_DIRTY_FILES | FM_DIRTY_STATUSBAR);
         return true;
     }
 
@@ -1726,7 +1746,7 @@ static bool fm_event(hwnd_t hwnd, const window_event_t *event) {
             int8_t btn = fm->toolbar_hover;
             fm->toolbar_pressed = 0;
             fm->toolbar_hover = -1;
-            wm_invalidate(hwnd);
+            fm_invalidate(fm, FM_DIRTY_TOOLBAR);
             if (btn >= 0) {
                 switch (btn) {
                 case TB_BACK:   fm_go_back(fm); break;
@@ -1743,7 +1763,7 @@ static bool fm_event(hwnd_t hwnd, const window_event_t *event) {
         /* End rubber band */
         if (fm->rubber_active) {
             fm->rubber_active = 0;
-            wm_invalidate(hwnd);
+            fm_invalidate(fm, FM_DIRTY_FILES);
         }
         return true;
     }
@@ -1762,7 +1782,7 @@ static bool fm_event(hwnd_t hwnd, const window_event_t *event) {
                 fm->col_name_w = new_w;
             else
                 fm->col_size_w = new_w;
-            wm_invalidate(hwnd);
+            fm_invalidate(fm, FM_DIRTY_FILES);
             return true;
         }
 
@@ -1781,7 +1801,7 @@ static bool fm_event(hwnd_t hwnd, const window_event_t *event) {
             }
             if (new_hover != fm->toolbar_hover) {
                 fm->toolbar_hover = new_hover;
-                wm_invalidate(hwnd);
+                fm_invalidate(fm, FM_DIRTY_TOOLBAR);
             }
             return true;
         }
@@ -1833,7 +1853,7 @@ static bool fm_event(hwnd_t hwnd, const window_event_t *event) {
                     fm->entries[i].sel_flags &= ~FN_SEL_SELECTED;
             }
             fm_update_selection_count(fm);
-            wm_invalidate(hwnd);
+            fm_invalidate(fm, FM_DIRTY_FILES | FM_DIRTY_STATUSBAR);
             return true;
         }
 
@@ -1860,7 +1880,7 @@ static bool fm_event(hwnd_t hwnd, const window_event_t *event) {
             if (new_tip != fm->tooltip_btn) {
                 fm->tooltip_btn = new_tip;
                 fm->tooltip_hover_tick = xTaskGetTickCount();
-                wm_invalidate(hwnd);
+                fm_invalidate(fm, FM_DIRTY_TOOLBAR);
             }
         }
         return true;
@@ -1882,7 +1902,7 @@ static bool fm_event(hwnd_t hwnd, const window_event_t *event) {
             fm->entries[idx].sel_flags |= FN_SEL_SELECTED;
             fm->focus_index = idx;
             fm_update_selection_count(fm);
-            wm_invalidate(hwnd);
+            fm_invalidate(fm, FM_DIRTY_FILES | FM_DIRTY_STATUSBAR);
         }
 
         /* Convert to screen coordinates for popup */
@@ -1900,7 +1920,7 @@ static bool fm_event(hwnd_t hwnd, const window_event_t *event) {
         /* Ctrl+A: select all */
         if ((mods & KMOD_CTRL) && sc == 0x04 /* HID A */) {
             fm_select_all(fm);
-            wm_invalidate(hwnd);
+            fm_invalidate(fm, FM_DIRTY_FILES | FM_DIRTY_STATUSBAR);
             return true;
         }
         /* Ctrl+C: copy */
@@ -1937,7 +1957,7 @@ static bool fm_event(hwnd_t hwnd, const window_event_t *event) {
         /* F5: refresh */
         if (sc == 0x3E /* HID F5 */) {
             fm_refresh(fm);
-            wm_invalidate(hwnd);
+            fm_invalidate(fm, FM_DIRTY_ALL);
             return true;
         }
         /* F2: rename */
@@ -2035,7 +2055,7 @@ static bool fm_event(hwnd_t hwnd, const window_event_t *event) {
             }
             fm->pending_rename = 0;
             fm_refresh(fm);
-            wm_invalidate(hwnd);
+            fm_invalidate(fm, FM_DIRTY_ALL);
             return true;
         }
 
@@ -2072,29 +2092,29 @@ static bool fm_event(hwnd_t hwnd, const window_event_t *event) {
             return true;
         case FN_CMD_SELECT_ALL:
             fm_select_all(fm);
-            wm_invalidate(hwnd);
+            fm_invalidate(fm, FM_DIRTY_FILES | FM_DIRTY_STATUSBAR);
             return true;
 
         /* View menu */
         case FN_CMD_LARGE_ICONS:
             fm->view_mode = FN_VIEW_LARGE_ICONS;
             fm->scroll_y = 0;
-            wm_invalidate(hwnd);
+            fm_invalidate(fm, FM_DIRTY_ALL);
             return true;
         case FN_CMD_SMALL_ICONS:
             fm->view_mode = FN_VIEW_SMALL_ICONS;
             fm->scroll_y = 0;
-            wm_invalidate(hwnd);
+            fm_invalidate(fm, FM_DIRTY_ALL);
             return true;
         case FN_CMD_LIST:
             fm->view_mode = FN_VIEW_LIST;
             fm->scroll_y = 0;
-            wm_invalidate(hwnd);
+            fm_invalidate(fm, FM_DIRTY_ALL);
             return true;
         case FN_CMD_REFRESH:
         case FN_CMD_CTX_REFRESH:
             fm_refresh(fm);
-            wm_invalidate(hwnd);
+            fm_invalidate(fm, FM_DIRTY_ALL);
             return true;
 
         /* Navigation */

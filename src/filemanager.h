@@ -167,7 +167,18 @@ typedef struct {
     /* --- misc flags ---------------------------------------------------- */
     uint8_t  has_custom_layout;
     uint8_t  pending_rename;
+
+    /* --- paint dirty flags --------------------------------------------- */
+    uint8_t  dirty;                 /* FM_DIRTY_* bitmask               */
 } filemanager_t;
+
+/* Dirty-region flags — only repaint the parts that actually changed.
+ * Avoids toolbar flicker when just selecting files. */
+#define FM_DIRTY_TOOLBAR    0x01
+#define FM_DIRTY_FILES      0x02
+#define FM_DIRTY_STATUSBAR  0x04
+#define FM_DIRTY_SCROLLBAR  0x08
+#define FM_DIRTY_ALL        0x0F
 
 /*==========================================================================
  * Public API

@@ -14,6 +14,8 @@
 #include "hardware/gpio.h"
 #include "hardware/structs/qmi.h"
 #include "hardware/watchdog.h"
+#include "hardware/dma.h"
+#include "hardware/structs/pio.h"
 #include "tusb.h"
 #include "FreeRTOS.h"
 #include "task.h"
@@ -268,6 +270,16 @@ void __attribute__((used)) hardfault_c_handler(uint32_t *stack, uint32_t lr_val)
     g_crash_dump.r3     = stack[3];
     g_crash_dump.r12    = stack[4];
     __asm volatile ("dsb 0xF" ::: "memory");
+
+    /* ---- Kill all audio immediately ----
+     * Abort DMA channels 10/11 (audio ping-pong) and disable all
+     * PIO1 state machines so the I2S DAC goes silent.  We poke
+     * hardware registers directly because normal driver APIs are
+     * unsafe from an exception handler. */
+    dma_hw->abort = (1u << 10) | (1u << 11);          /* abort audio DMA */
+    while (dma_hw->abort & ((1u << 10) | (1u << 11)))  /* wait until done */
+        tight_loop_contents();
+    pio1_hw->ctrl = 0;                                 /* disable all PIO1 SMs */
 
     /* ---- Blue Screen of Death ---- */
     display_clear(COLOR_BLUE);

@@ -279,11 +279,11 @@ int main(int argc, char **argv) {
     if (exec_mode) {
         /* No menu bar in exec mode */
         win_h = client_h + THEME_TITLE_HEIGHT + 2 * THEME_BORDER_WIDTH;
-        style = WSTYLE_DEFAULT;
+        style = WSTYLE_DEFAULT | WF_FULLSCREENABLE;
     } else {
         win_h = client_h + THEME_TITLE_HEIGHT + THEME_MENU_HEIGHT
               + 2 * THEME_BORDER_WIDTH;
-        style = WSTYLE_DEFAULT | WF_MENUBAR;
+        style = WSTYLE_DEFAULT | WF_MENUBAR | WF_FULLSCREENABLE;
     }
 
     /* Build window title — use filename for exec mode */

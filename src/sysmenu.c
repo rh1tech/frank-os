@@ -64,8 +64,8 @@ static void build_items(void) {
     if ((win->flags & WF_RESIZABLE) && win->state != WS_MAXIMIZED) {
         sys_items[sys_item_count++] = (sys_item_t){ "Maximize", SYS_ID_MAXIMIZE, false };
     }
-    /* Fullscreen toggle — available for all closable windows */
-    if (win->flags & WF_CLOSABLE) {
+    /* Fullscreen toggle — only for windows that opt in */
+    if (win->flags & WF_FULLSCREENABLE) {
         bool is_fs = wm_is_fullscreen(sys_hwnd);
         sys_items[sys_item_count++] = (sys_item_t){
             is_fs ? "Exit Fullscreen" : "Enter Fullscreen",

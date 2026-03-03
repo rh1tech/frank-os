@@ -534,7 +534,7 @@ int main(int argc, char **argv) {
     ((void(*)(const uint8_t*))_sys_table_ptrs[432])(zx_icon_16x16);
 
     G->app_hwnd = wm_create_window(x, y, fw, fh, "ZX Spectrum",
-                                    WSTYLE_DIALOG | WF_MENUBAR,
+                                    WSTYLE_DIALOG | WF_MENUBAR | WF_FULLSCREENABLE,
                                     zx_event, zx_paint);
     if (G->app_hwnd == HWND_NULL) {
         vPortFree(zx);

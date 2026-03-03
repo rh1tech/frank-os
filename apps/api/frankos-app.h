@@ -87,6 +87,7 @@ typedef uint8_t hwnd_t;
 #define WF_DIRTY       (1u << 7)
 #define WF_MENUBAR     (1u << 8)
 #define WF_FRAME_DIRTY (1u << 9)  /* decorations need repaint */
+#define WF_FULLSCREENABLE (1u << 11) /* window supports fullscreen toggle */
 
 /* ========================================================================
  * Window style presets
@@ -898,6 +899,48 @@ static inline void app_launch_deferred(const char *app_path,
                                         const char *file_path) {
     typedef void (*fn_t)(const char *, const char *);
     ((fn_t)_sys_table_ptrs[505])(app_path, file_path);
+}
+
+/* ========================================================================
+ * MIDI OPL FM synthesis API (indices 506–511)
+ * ======================================================================== */
+
+typedef struct midi_opl midi_opl_t;
+
+/* 506: midi_opl_init */
+static inline midi_opl_t *midi_opl_init(void) {
+    typedef midi_opl_t *(*fn_t)(void);
+    return ((fn_t)_sys_table_ptrs[506])();
+}
+
+/* 507: midi_opl_load */
+static inline bool midi_opl_load(midi_opl_t *ctx, const char *filepath) {
+    typedef bool (*fn_t)(midi_opl_t*, const char*);
+    return ((fn_t)_sys_table_ptrs[507])(ctx, filepath);
+}
+
+/* 508: midi_opl_render */
+static inline int midi_opl_render(midi_opl_t *ctx, int16_t *buf, int max_frames) {
+    typedef int (*fn_t)(midi_opl_t*, int16_t*, int);
+    return ((fn_t)_sys_table_ptrs[508])(ctx, buf, max_frames);
+}
+
+/* 509: midi_opl_playing */
+static inline bool midi_opl_playing(midi_opl_t *ctx) {
+    typedef bool (*fn_t)(midi_opl_t*);
+    return ((fn_t)_sys_table_ptrs[509])(ctx);
+}
+
+/* 510: midi_opl_set_loop */
+static inline void midi_opl_set_loop(midi_opl_t *ctx, bool loop) {
+    typedef void (*fn_t)(midi_opl_t*, bool);
+    ((fn_t)_sys_table_ptrs[510])(ctx, loop);
+}
+
+/* 511: midi_opl_free */
+static inline void midi_opl_free(midi_opl_t *ctx) {
+    typedef void (*fn_t)(midi_opl_t*);
+    ((fn_t)_sys_table_ptrs[511])(ctx);
 }
 
 #ifdef __cplusplus

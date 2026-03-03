@@ -256,7 +256,7 @@ int main(int argc, char **argv) {
     if (y < 0) y = 0;
 
     g_app->app_hwnd = wm_create_window(x, y, fw, fh, "Digger",
-                                         WSTYLE_DIALOG | WF_MENUBAR,
+                                         WSTYLE_DIALOG | WF_MENUBAR | WF_FULLSCREENABLE,
                                          digger_event, digger_paint);
     if (g_app->app_hwnd == HWND_NULL) {
         vPortFree(g_app->framebuffer);

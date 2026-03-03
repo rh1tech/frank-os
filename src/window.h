@@ -70,6 +70,7 @@ typedef uint8_t hwnd_t;
 #define WF_MENUBAR   (1u << 8)
 #define WF_FRAME_DIRTY (1u << 9)  /* decorations need repaint */
 #define WF_SUSPENDED   (1u << 10) /* app task is suspended (swap) */
+#define WF_FULLSCREENABLE (1u << 11) /* window supports fullscreen toggle */
 
 /*==========================================================================
  * Window state

@@ -132,7 +132,7 @@ hwnd_t wm_create_window(int16_t x, int16_t y, int16_t w, int16_t h,
         if (!(windows[i].flags & WF_ALIVE)) {
             window_t *win = &windows[i];
             memset(win, 0, sizeof(*win));
-            win->flags = WF_ALIVE | WF_VISIBLE | WF_DIRTY | WF_FRAME_DIRTY | (style & 0x178);
+            win->flags = WF_ALIVE | WF_VISIBLE | WF_DIRTY | WF_FRAME_DIRTY | (style & 0x978);
             win->state = WS_NORMAL;
             win->frame = (rect_t){ x, y, w, h };
             win->restore_rect = win->frame;
@@ -349,6 +349,11 @@ void wm_minimize_window(hwnd_t hwnd) {
                 break;
             }
         }
+        /* Switch swap foreground so the next window's task is resumed
+         * from PSRAM.  Without this, wm_set_focus below sets focus_hwnd
+         * but the app stays suspended — a later click sees focus_hwnd
+         * already correct and skips WM_SETFOCUS, leaving the app frozen. */
+        swap_switch_to(next);
         wm_set_focus(next);
         if (focus_hwnd == HWND_NULL && desktop_has_shortcuts()) {
             desktop_focus();
@@ -1041,6 +1046,15 @@ void wm_composite(void) {
             int16_t mx, my;
             wm_get_cursor_pos(&mx, &my);
             bool cursor_moved = !stamped || mx != sx || my != sy;
+
+            /* Treat a cursor-type change the same as a move: the old
+             * stamp must be erased and re-drawn with the new shape.
+             * Without this, cursor_get_bounds returns bounds for the
+             * current type, not the stamped type, which can cause the
+             * overlap check to skip the erase — leaving stale
+             * save-under pixels that cut into a newly painted window. */
+            if (cursor_overlay_type_changed())
+                cursor_moved = true;
 
             bool any_dirty = false;
             for (uint8_t i = 0; i < z_count && !any_dirty; i++) {

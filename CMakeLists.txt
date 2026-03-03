@@ -112,6 +112,9 @@ add_subdirectory(lib/helix)
 # HxCModPlayer MOD tracker decoder
 add_subdirectory(lib/hxcmod)
 
+# OPL FM synth + MIDI player
+add_subdirectory(lib/opl)
+
 # I2S audio PIO program (generates audio_i2s.pio.h)
 add_subdirectory(drivers/audio)
 target_include_directories(frankos PRIVATE
@@ -178,6 +181,7 @@ target_link_libraries(frankos
     sdcard
     helix
     hxcmod
+    opl
     pico_stdlib
     pico_multicore
     hardware_clocks

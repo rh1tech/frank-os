@@ -804,6 +804,7 @@ static void cc_cmd(void) {
         return;
     cc(0, argc, argv);
 #ifdef PSHELL_FRANKOS
+    cc_cleanup();
     vt100_input_flush();
 #endif
 }

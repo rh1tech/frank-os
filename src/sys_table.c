@@ -45,6 +45,7 @@
 #include "hxcmod.h"
 #include "psram.h"
 #include "mp3dec.h"
+#include "midi_opl.h"
 #include "clipboard.h"
 #include "controls.h"
 #include "find_dialog.h"
@@ -677,6 +678,13 @@ unsigned long __in_systable() __aligned(4096) sys_table_ptrs[] = {
     wm_find_window_by_title,// 504
     // API v.33 — Deferred app launch
     app_launch_deferred,    // 505
+    // API v.34 — MIDI OPL FM synthesis
+    midi_opl_init,          // 506
+    midi_opl_load,          // 507
+    midi_opl_render,        // 508
+    midi_opl_playing,       // 509
+    midi_opl_set_loop,      // 510
+    midi_opl_free,          // 511
     // TODO:
     0
 };

@@ -353,3 +353,7 @@ void cursor_overlay_unlock(void) {
 bool cursor_overlay_is_locked(void) {
     return overlay.locked;
 }
+
+bool cursor_overlay_type_changed(void) {
+    return overlay.valid && current_cursor != overlay.stamp_type;
+}
