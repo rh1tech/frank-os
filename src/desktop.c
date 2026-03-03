@@ -287,6 +287,8 @@ static void dt_load(void) {
             strncpy(sc->name, path_basename(path), DESKTOP_NAME_MAX - 1);
             load_file_icon(sc);
         }
+        if (!sc->name[0])
+            strncpy(sc->name, path_basename(path), DESKTOP_NAME_MAX - 1);
 
         dt_count++;
     }

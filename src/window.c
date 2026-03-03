@@ -248,8 +248,15 @@ void wm_destroy_window(hwnd_t hwnd) {
     /* Unregister from the swap system BEFORE clearing the window slot.
      * This also clears active_fg if this was the foreground app, so
      * swap_switch_to(new_focus) below can properly resume the
-     * previous app (restoring its stack and clearing WF_SUSPENDED). */
+     * previous app (restoring its stack and clearing WF_SUSPENDED).
+     *
+     * However, if the caller IS the app's own task (still running on the
+     * shared stack), we must NOT call swap_switch_to — swap_resume()
+     * would memcpy over our live stack frame and hardfault.  The normal
+     * exit path (vAppDetachedTask) calls swap_resume_previous() which
+     * safely defers the resume to the compositor loop. */
     bool was_swap_fg = (swap_get_foreground() == hwnd);
+    bool caller_is_owner = (swap_get_task(hwnd) == xTaskGetCurrentTaskHandle());
     swap_unregister(hwnd);
 
     /* Remove from z-stack */
@@ -300,8 +307,10 @@ void wm_destroy_window(hwnd_t hwnd) {
         /* If the destroyed window was the swap foreground, switch to
          * the new focus window so the swap system properly resumes it
          * (restores shared stack from PSRAM, clears WF_SUSPENDED).
-         * Without this, keyboard events are blocked by WF_SUSPENDED. */
-        if (was_swap_fg)
+         * But NOT if the caller is the app itself — it's still on the
+         * shared stack; the exit path's swap_resume_previous() handles
+         * that case safely via deferred resume. */
+        if (was_swap_fg && !caller_is_owner)
             swap_switch_to(new_focus);
     }
 }

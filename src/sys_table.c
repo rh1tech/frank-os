@@ -675,6 +675,8 @@ unsigned long __in_systable() __aligned(4096) sys_table_ptrs[] = {
     wm_toggle_fullscreen,   // 502
     wm_is_fullscreen,       // 503
     wm_find_window_by_title,// 504
+    // API v.33 — Deferred app launch
+    app_launch_deferred,    // 505
     // TODO:
     0
 };

@@ -178,7 +178,7 @@ struct window {
  * ======================================================================== */
 
 #define MENU_MAX_ITEMS    8
-#define MENU_MAX_MENUS    4
+#define MENU_MAX_MENUS    5
 #define MIF_SEPARATOR    (1u << 0)
 #define MIF_DISABLED     (1u << 1)
 
@@ -889,6 +889,15 @@ static inline bool wm_is_fullscreen(hwnd_t hwnd) {
 static inline hwnd_t wm_find_window_by_title(const char *title) {
     typedef hwnd_t (*fn_t)(const char *);
     return ((fn_t)_sys_table_ptrs[504])(title);
+}
+
+/* 505: app_launch_deferred — request a deferred app launch.
+ * Safe to call from ELF app context; the compositor loop performs the
+ * actual launch_elf_app_with_file call on the next frame. */
+static inline void app_launch_deferred(const char *app_path,
+                                        const char *file_path) {
+    typedef void (*fn_t)(const char *, const char *);
+    ((fn_t)_sys_table_ptrs[505])(app_path, file_path);
 }
 
 #ifdef __cplusplus

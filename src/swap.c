@@ -379,6 +379,11 @@ bool swap_find_by_task(TaskHandle_t task) {
     return find_entry_by_task(task) != NULL;
 }
 
+TaskHandle_t swap_get_task(hwnd_t hwnd) {
+    swap_entry_t *e = find_entry(hwnd);
+    return e ? e->task : NULL;
+}
+
 StackType_t *swap_get_shared_stack(void) {
     return shared_stack;
 }

@@ -1093,26 +1093,44 @@ int pshell_exec(const char *file) {
 
     printf(VT_CLEAR);
 
-    /* Try compiling from source if available.
-     * The cc binary format embeds absolute data addresses, so loading
-     * a binary compiled by a different pshell instance would crash.
-     * Recompiling from source avoids this entirely. */
-    char src[260];
-    snprintf(src, sizeof(src), "%s.c", file);
-    struct lfs_info info;
-    if (fs_stat(src, &info) == LFS_ERR_OK) {
-        /* cc(0,...) skips argv[0] (the "cc" command name), so pass
-         * the source file as argv[1]. */
-        argc = 2;
+    /* Check if the file argument ends with ".c" — compile-only mode.
+     * We strip the extension to form the output name and pass -o to cc
+     * so it writes an executable without running it.
+     * cc parses flags before the source file: cc [-o outfile] source.c */
+    int flen = strlen(file);
+    if (flen > 2 && file[flen - 2] == '.' && file[flen - 1] == 'c') {
+        /* Compile-only: cc -o <output> <source> */
+        char outname[260];
+        if (flen - 2 >= (int)sizeof(outname))
+            flen = sizeof(outname) + 1;
+        memcpy(outname, file, flen - 2);
+        outname[flen - 2] = '\0';
+        argc = 4;
         argv[0] = "cc";
-        argv[1] = src;
+        argv[1] = "-o";
+        argv[2] = outname;
+        argv[3] = (char *)file;
         cc(0, argc, argv);
+        cc_cleanup();
     } else {
-        argc = 1;
-        argv[0] = (char *)file;
-        cc(1, argc, argv);
+        /* Compile-and-run mode (existing behavior) */
+        char src[260];
+        snprintf(src, sizeof(src), "%s.c", file);
+        struct lfs_info info;
+        if (fs_stat(src, &info) == LFS_ERR_OK) {
+            /* cc(0,...) skips argv[0] (the "cc" command name), so pass
+             * the source file as argv[1]. */
+            argc = 2;
+            argv[0] = "cc";
+            argv[1] = src;
+            cc(0, argc, argv);
+        } else {
+            argc = 1;
+            argv[0] = (char *)file;
+            cc(1, argc, argv);
+        }
+        cc_cleanup();
     }
-    cc_cleanup();
 
     /* Wait for a keypress before closing */
     printf("\n" VT_BOLD "Press any key to close..." VT_NORMAL);

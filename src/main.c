@@ -386,6 +386,7 @@ static void compositor_task(void *params) {
         /* Check for deferred start menu actions (dialog confirmations) */
         startmenu_check_pending();
         run_dialog_check_pending();
+        app_launch_check_pending();
 
         /* Deferred spawns from input_task hotkeys — handled here on the
          * compositor task so WM calls are always on the right task/stack.

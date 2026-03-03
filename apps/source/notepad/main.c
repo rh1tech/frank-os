@@ -47,6 +47,10 @@
 #define CMD_SYNTAX_CPP    402
 #define CMD_SYNTAX_INI    403
 
+/* Dev menu command IDs */
+#define CMD_DEV_COMPILE   500
+#define CMD_DEV_RUN       501
+
 /* Syntax modes */
 #define SYNTAX_PLAIN      0
 #define SYNTAX_C          1
@@ -95,7 +99,9 @@ static volatile bool app_closing;
 static void np_setup_menu(hwnd_t hwnd) {
     menu_bar_t bar;
     memset(&bar, 0, sizeof(bar));
-    bar.menu_count = 4;
+
+    bool has_dev = (np.syntax_mode == SYNTAX_C || np.syntax_mode == SYNTAX_CPP);
+    bar.menu_count = has_dev ? 5 : 4;
 
     /* File menu */
     menu_def_t *file = &bar.menus[0];
@@ -161,8 +167,22 @@ static void np_setup_menu(hwnd_t hwnd) {
         syntax->items[i].command_id = cmds[i];
     }
 
+    int next_menu = 3;
+
+    /* Dev menu — only for C/C++ files */
+    if (has_dev) {
+        menu_def_t *dev = &bar.menus[next_menu++];
+        strncpy(dev->title, "Dev", sizeof(dev->title) - 1);
+        dev->accel_key = 0x07; /* HID 'D' */
+        dev->item_count = 2;
+        strncpy(dev->items[0].text, "Compile", sizeof(dev->items[0].text) - 1);
+        dev->items[0].command_id = CMD_DEV_COMPILE;
+        strncpy(dev->items[1].text, "Run", sizeof(dev->items[1].text) - 1);
+        dev->items[1].command_id = CMD_DEV_RUN;
+    }
+
     /* Help menu */
-    menu_def_t *help = &bar.menus[3];
+    menu_def_t *help = &bar.menus[next_menu];
     strncpy(help->title, "Help", sizeof(help->title) - 1);
     help->accel_key = 0x0B; /* HID 'H' */
     help->item_count = 1;
@@ -398,6 +418,40 @@ static void np_resume_pending(void) {
     } else if (action == PENDING_EXIT) {
         np_do_exit();
     }
+}
+
+/*==========================================================================
+ * Dev menu actions (Compile / Run)
+ *=========================================================================*/
+
+static void np_dev_compile(void) {
+    if (!np.filepath[0]) {
+        dialog_show(np.hwnd, "Dev",
+                    "Save the file first.",
+                    DLG_ICON_WARNING, DLG_BTN_OK);
+        return;
+    }
+    if (np.modified) np_do_save();
+    /* filepath ends with .c, so pshell enters compile-only mode */
+    app_launch_deferred("/fos/pshell", np.filepath);
+}
+
+static void np_dev_run(void) {
+    if (!np.filepath[0]) {
+        dialog_show(np.hwnd, "Dev",
+                    "Save the file first.",
+                    DLG_ICON_WARNING, DLG_BTN_OK);
+        return;
+    }
+    if (np.modified) np_do_save();
+    /* Strip .c extension — pshell will find the .c source and compile+run */
+    char path[NP_PATH_MAX];
+    strncpy(path, np.filepath, NP_PATH_MAX - 1);
+    path[NP_PATH_MAX - 1] = '\0';
+    int len = strlen(path);
+    if (len > 2 && path[len - 2] == '.' && path[len - 1] == 'c')
+        path[len - 2] = '\0';
+    app_launch_deferred("/fos/pshell", path);
 }
 
 /*==========================================================================
@@ -1088,6 +1142,16 @@ static bool np_event(hwnd_t hwnd, const window_event_t *event) {
             np.syntax_mode = SYNTAX_INI;
             np_setup_menu(np.hwnd);
             wm_invalidate(np.hwnd);
+            return true;
+        }
+
+        /* Dev menu commands */
+        else if (cmd == CMD_DEV_COMPILE) {
+            np_dev_compile();
+            return true;
+        }
+        else if (cmd == CMD_DEV_RUN) {
+            np_dev_run();
             return true;
         }
 

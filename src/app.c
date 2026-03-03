@@ -1899,6 +1899,31 @@ void __in_hfa() launch_elf_app_with_files(const char *app_path,
     }
 }
 
+/*==========================================================================
+ * Deferred app launch — safe to call from ELF app context.
+ * The compositor loop polls app_launch_check_pending() each frame.
+ *=========================================================================*/
+
+#define APP_DEFERRED_PATH_MAX 256
+
+static volatile bool  app_launch_pending = false;
+static char           app_launch_app[APP_DEFERRED_PATH_MAX];
+static char           app_launch_file[APP_DEFERRED_PATH_MAX];
+
+void app_launch_deferred(const char *app_path, const char *file_path) {
+    strncpy(app_launch_app, app_path, APP_DEFERRED_PATH_MAX - 1);
+    app_launch_app[APP_DEFERRED_PATH_MAX - 1] = '\0';
+    strncpy(app_launch_file, file_path, APP_DEFERRED_PATH_MAX - 1);
+    app_launch_file[APP_DEFERRED_PATH_MAX - 1] = '\0';
+    app_launch_pending = true;
+}
+
+void app_launch_check_pending(void) {
+    if (!app_launch_pending) return;
+    app_launch_pending = false;
+    launch_elf_app_with_file(app_launch_app, app_launch_file);
+}
+
 // support sygnal for current "sync_ctx" context only for now
 void __in_hfa() app_signal(void) {
     if (bootb_sync_signal) bootb_sync_signal(15);

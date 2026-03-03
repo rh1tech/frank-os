@@ -50,6 +50,12 @@ void launch_elf_app_with_file(const char *app_path, const char *file_path);
 void launch_elf_app_with_files(const char *app_path,
                                const char **files, int file_count);
 
+/* Deferred app launch — sets a pending flag consumed by the compositor loop.
+ * Use this from ELF apps that cannot call launch_elf_app_with_file directly
+ * (it would suspend the calling task via swap_switch_to, causing deadlock). */
+void app_launch_deferred(const char *app_path, const char *file_path);
+void app_launch_check_pending(void);
+
 typedef struct driver_api_s {
     const char* dev_node_name;
     uint32_t driver_version;

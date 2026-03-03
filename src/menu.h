@@ -19,7 +19,7 @@
 
 #define MENU_MAX_ITEMS    8    /* max items per dropdown */
 #define MENU_POPUP_MAX   12   /* max items in a popup/context menu */
-#define MENU_MAX_MENUS    4    /* max top-level menus per window */
+#define MENU_MAX_MENUS    5    /* max top-level menus per window */
 #define MENU_MAX_BARS    16    /* one per window slot */
 
 /* Item flags */

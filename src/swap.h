@@ -85,6 +85,9 @@ void swap_force_close(hwnd_t hwnd);
  * child windows created by the same task). */
 bool swap_find_by_task(TaskHandle_t task);
 
+/* Return the task handle registered for a swap entry (NULL if none) */
+TaskHandle_t swap_get_task(hwnd_t hwnd);
+
 /* Return pointer to the shared SRAM stack (for task creation) */
 StackType_t *swap_get_shared_stack(void);
 
