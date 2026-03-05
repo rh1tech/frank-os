@@ -660,7 +660,6 @@ static uint8_t* __in_hfa() load_sec2mem(load_sec_ctx * c, uint16_t sec_num, bool
     if (prg_addr != 0) {
         return prg_addr;
     }
-    printf("[sec2mem] sec#%d heap=%u\n", sec_num, (unsigned)xPortGetFreeHeapSize());
     size_t prev_flash_addr = flash_addr;
     size_t new_flash_addr = flash_addr;
     UINT rb;
@@ -682,8 +681,6 @@ static uint8_t* __in_hfa() load_sec2mem(load_sec_ctx * c, uint16_t sec_num, bool
         bool write_access = try_to_use_flash ? (psh->sh_flags & 1) : true; // required to provide write access
         bool executable = (psh->sh_flags & SHF_EXECINSTR) != 0;
         prg_addr = sec_align(psh->sh_size, &del_addr, &real_ram_addr, psh->sh_addralign, write_access, executable);
-        printf("[sec2mem] sec#%d %s -> %p (%u bytes)\n", sec_num,
-               executable ? "CODE" : "DATA", real_ram_addr, (unsigned)psh->sh_size);
         new_flash_addr = flash_addr;
         bool alloc_enough = psh->sh_flags & SHF_ALLOC; // file may not contain such section, just allocation is enough
         if (psh->sh_type == SHT_NOBITS) {
@@ -777,7 +774,6 @@ static uint8_t* __in_hfa() load_sec2mem(load_sec_ctx * c, uint16_t sec_num, bool
                     uint8_t* sec_addr_ref  = prg_addr;
                     // goutf("rel_offset: %p; rel_sym: %d; rel_type: %d -> %d\n", rel.rel_offset, rel_sym, rel_type, c->psym->st_shndx);
                     if (c->psym->st_shndx != sec_num) {
-                        printf("[sec2mem] sec#%d rel->sec#%d\n", sec_num, c->psym->st_shndx);
                         sec_addr_ref = load_sec2mem(c, c->psym->st_shndx, try_to_use_flash);
                         if (sec_addr_ref == 0) {
                             if (rel_buf) vPortFree(rel_buf);
@@ -930,7 +926,6 @@ bool __in_hfa() load_app(cmd_ctx_t* ctx) {
         return false;
     }
     char * fn = ctx->orig_cmd;
-    printf("[load_app] start: %s\n", fn);
     cleanup_bootb_ctx(ctx);
     ctx->pboot_ctx = (bootb_ctx_t*)pvPortMalloc(sizeof(bootb_ctx_t));
     if (!ctx->pboot_ctx) {
@@ -951,13 +946,10 @@ a:
         ctx->ret_code = -1;
         return false;
     }
-    printf("[load_app] file opened, size=%lu, heap=%u\n",
-           (unsigned long)f->obj.objsize, (unsigned)xPortGetFreeHeapSize());
     /* Flash loading disabled on FRANK OS: Core 1 runs bare-metal HSTX DMA
      * without the SDK multicore lockout handler, so flash_block() would
      * hang at multicore_lockout_start_blocking(). */
     bool try_to_use_flash = false;
-    printf("[load_app] try_flash=%d\n", try_to_use_flash);
     elf32_header* pehdr = (elf32_header*)pvPortMalloc(sizeof(elf32_header));
     if (!pehdr) {
 a1:
@@ -983,7 +975,6 @@ a2:
         goutf("Unable to read .shstrtab section header @ %d+%d (read: %d)\n", f_tell(f), sizeof(elf32_shdr), rb);
         goto e11;
     }
-    printf("[load_app] shstrtab size=%u\n", (unsigned)psh->sh_size);
     char* symtab = (char*)pvPortMalloc(psh->sh_size);
     if (!symtab) {
 a3:
@@ -1013,8 +1004,6 @@ a3:
         goutf("Unable to find .strtab/.symtab sections\n");
         goto e2;
     }
-    printf("[load_app] symtab_off=%d len=%u, strtab_off=%d len=%u\n",
-           symtab_off, (unsigned)symtab_len, strtab_off, (unsigned)strtab_len);
     f_lseek(f, strtab_off);
     char* strtab = (char*)pvPortMalloc(strtab_len);
     if (!strtab) {
@@ -1046,8 +1035,6 @@ a4:
             else vPortFree(symtab_cache);
             symtab_cache = NULL;
         }
-        printf("[load_app] symtab cached: %u entries (%u bytes)\n",
-               (unsigned)symtab_cnt, (unsigned)symtab_len);
     }
 
     elf32_sym* psym = pvPortMalloc(sizeof(elf32_sym));;
@@ -1127,9 +1114,6 @@ a6:
     }
     if (_init_idx == 0xFFFFFFFF && w_init_idx != 0xFFFFFFFF) _init_idx = w_init_idx;
     if (_fini_idx == 0xFFFFFFFF && w_fini_idx != 0xFFFFFFFF) _fini_idx = w_fini_idx;
-    printf("[load_app] syms: req=%d init=%d main=%d fini=%d sig=%d heap=%u\n",
-          (int)req_idx, (int)_init_idx, (int)main_idx, (int)_fini_idx, (int)sig_idx,
-          (unsigned)xPortGetFreeHeapSize());
     /* Pre-scan: sum executable section sizes.  If they fit in the SRAM
      * heap (with margin), place code sections in SRAM so z80_tick etc.
      * run without XIP cache thrashing.  Data sections always go to PSRAM.
@@ -1145,23 +1129,15 @@ a6:
         }
         size_t free_heap = xPortGetFreeHeapSize();
         g_sram_for_code = (code_alloc + (32 << 10) <= free_heap);
-        printf("[load_app] code_alloc=%u heap=%u sram_code=%d\n",
-               (unsigned)code_alloc, (unsigned)free_heap, g_sram_for_code);
     }
 
-    printf("[load_app] load req_ver...\n");
     bootb_ctx->req_ver_fn = load_sec2mem_wrapper(pctx, req_idx, try_to_use_flash);
-    printf("[load_app] load _init... heap=%u\n", (unsigned)xPortGetFreeHeapSize());
     bootb_ctx->_init_fn   = load_sec2mem_wrapper(pctx, _init_idx, try_to_use_flash);
-    printf("[load_app] load main... heap=%u\n", (unsigned)xPortGetFreeHeapSize());
     bootb_ctx->main_fn    = load_sec2mem_wrapper(pctx, main_idx, try_to_use_flash);
-    printf("[load_app] load _fini... heap=%u\n", (unsigned)xPortGetFreeHeapSize());
     bootb_ctx->_fini_fn   = load_sec2mem_wrapper(pctx, _fini_idx, try_to_use_flash);
-    printf("[load_app] load sig... heap=%u\n", (unsigned)xPortGetFreeHeapSize());
     bootb_ctx->sig_fn     = load_sec2mem_wrapper(pctx, sig_idx, try_to_use_flash);
     bootb_ctx->flags_fn   = load_sec2mem_wrapper(pctx, flags_idx, try_to_use_flash);
     g_sram_for_code = false;   /* reset for next app load */
-    printf("[load_app] all loaded! heap=%u\n", (unsigned)xPortGetFreeHeapSize());
     if(try_to_use_flash) {
         node_t* n = lst->first;
         uint32_t min_addr = 0xFFFFFFFF;
@@ -1299,7 +1275,6 @@ void __in_hfa() exec_sync(cmd_ctx_t* ctx) {
     goutf("__required_m_api_verion: [%p]\n", bootb_ctx->req_ver_fn);
     #endif
     int rav = bootb_ctx->req_ver_fn ? bootb_ctx->req_ver_fn() : MIN_API_VERSION;
-    printf("[exec_sync] rav=%d\n", rav);
     #if DEBUG_APP_LOAD
     goutf("rav: %d\n", rav);
     #endif
@@ -1315,14 +1290,11 @@ void __in_hfa() exec_sync(cmd_ctx_t* ctx) {
     }
     bootb_ctx->_fini_ctx = 0;
     if (bootb_ctx->_init_fn) {
-        printf("[exec_sync] calling _init at %p\n", bootb_ctx->_init_fn);
         bootb_ctx->_fini_ctx = bootb_ctx->_init_fn();
-        printf("[exec_sync] _init done, fini_ctx=%p\n", bootb_ctx->_fini_ctx);
         #if DEBUG_APP_LOAD
         goutf("_init done: %p\n", bootb_ctx->_fini_ctx);
         #endif
     }
-    printf("[exec_sync] calling main at %p argc=%d\n", bootb_ctx->main_fn, ctx->argc);
     #if DEBUG_APP_LOAD
     goutf("EXEC main: [%p]\n", bootb_ctx->main_fn);
     goutf("EXEC signal: [%p]\n", bootb_sync_signal);
@@ -1331,7 +1303,6 @@ void __in_hfa() exec_sync(cmd_ctx_t* ctx) {
     bootb_sync_signal = bootb_ctx->sig_fn;
     int res = bootb_ctx->main_fn ? bootb_ctx->main_fn(ctx->argc, ctx->argv) : -3;
     bootb_sync_signal = NULL;
-    printf("[exec_sync] main returned %d\n", res);
     #if DEBUG_APP_LOAD
     goutf("EXEC RET_CODE: %d -> _fini: %p(%p)\n", res, bootb_ctx->_fini_fn, bootb_ctx->_fini_ctx);
     #endif
@@ -1635,9 +1606,7 @@ void __in_hfa() exec(cmd_ctx_t* ctx) { // like init proc flow
             kbd_set_stdin_owner(1);
             /* ================================== */
             if (ctx->stage != PREPARED) { // it is expected cmd/cmd0 will prepare ctx for next run for application, in other case - cleanup ctx
-                printf("[exec] cleanup_ctx...\n");
                 cleanup_ctx(ctx);
-                printf("[exec] cleanup_ctx done, heap=%u\n", (unsigned)xPortGetFreeHeapSize());
             }
             #if DEBUG_HEAP_SIZE
             {

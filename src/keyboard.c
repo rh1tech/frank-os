@@ -469,7 +469,6 @@ bool keyboard_get_event(key_event_t *ev) {
 void set_scancode_handler(scancode_handler_t h) {
     terminal_t *t = terminal_get_active();
     if (t) t->mos2_scancode_handler = h;
-    printf("[set_scancode_handler] %p -> term %p\n", h, t);
 }
 void set_cp866_handler(cp866_handler_t h) {
     terminal_t *t = terminal_get_active();
@@ -478,7 +477,6 @@ void set_cp866_handler(cp866_handler_t h) {
 scancode_handler_t get_scancode_handler(void) {
     terminal_t *t = terminal_get_active();
     scancode_handler_t h = t ? t->mos2_scancode_handler : NULL;
-    printf("[get_scancode_handler] -> %p (term %p)\n", h, t);
     return h;
 }
 cp866_handler_t get_cp866_handler(void) {

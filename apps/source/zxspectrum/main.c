@@ -453,8 +453,6 @@ int main(int argc, char **argv) {
     memset(globals, 0, sizeof(app_globals_t));
     G = globals;
 
-    serial_printf("ZX: starting\n");
-
     G->app_task = xTaskGetCurrentTaskHandle();
 
     /* Allocate FIL struct separately to isolate from other state */
@@ -527,8 +525,6 @@ int main(int argc, char **argv) {
         G->tap_path[sizeof(G->tap_path) - 1] = '\0';
         G->tap_path_ready = true;
     }
-
-    serial_printf("ZX: running\n");
 
     /* Main emulation loop.
      * zx_exec() takes MICROSECONDS — 20000 µs = 20 ms = 1 ZX frame. */

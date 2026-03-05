@@ -302,23 +302,19 @@ static void shell_run_elf(terminal_t *t, int argc, char **argv) {
      * we re-run the original command — just like MOS2's vCmdTask reruns
      * COMSPEC after any command chain finishes. */
     for (;;) {
-        printf("[shell] calling exec...\n");
         exec(ctx);
-        printf("[shell] exec returned, stage=%d ret=%d\n", ctx->stage, ctx->ret_code);
+
 
         /* Handle chained commands (e.g. mc launching mcview).
          * ctx->stage == PREPARED means the app set up a follow-on command. */
         bool had_chain = false;
         while (ctx->stage == PREPARED) {
             had_chain = true;
-            printf("[shell] chain: orig_cmd='%s'\n",
-                   ctx->orig_cmd ? ctx->orig_cmd : "(null)");
             if (!exists(ctx))       { cleanup_ctx(ctx); break; }
             /* Silent ELF check: if the chained file is not an ELF (e.g. a
              * data file that mc tried to "open"), skip it without printing
              * the noisy "It is not an ELF file" message from is_new_app. */
             if (!is_elf_file(ctx->orig_cmd)) {
-                printf("[shell] chain: '%s' is not ELF, skipping\n", ctx->orig_cmd);
                 cleanup_ctx(ctx); break;
             }
             if (!is_new_app(ctx))   { cleanup_ctx(ctx); break; }
@@ -332,8 +328,6 @@ static void shell_run_elf(terminal_t *t, int argc, char **argv) {
 
         /* Chain finished (e.g. mcview exited after mc launched it).
          * Re-run original command (COMSPEC mechanism from MOS2). */
-        printf("[shell] chain ended, re-running '%s'\n", saved_cmd);
-
         /* Repair context after cleanup_ctx zeroed pids and pallocs */
         pids->p[ctx->pid] = ctx;
         vTaskSetThreadLocalStoragePointer(xTaskGetCurrentTaskHandle(), 0, ctx);
@@ -364,7 +358,6 @@ done:
     pids->p[1] = ctx;
     vTaskSetThreadLocalStoragePointer(xTaskGetCurrentTaskHandle(), 0, ctx);
     vPortFree(saved_cmd);
-    printf("[shell] shell_run_elf returning\n");
 }
 
 /*==========================================================================
@@ -427,9 +420,7 @@ static void shell_task(void *pv) {
 
         /* Show prompt with current directory */
         char *cd = get_ctx_var(ctx, "CD");
-        printf("[shell] prompt cd='%s'\n", cd ? cd : "(null)");
         terminal_printf(t, "%s> ", cd ? cd : "FOS");
-        printf("[shell] waiting for input...\n");
 
         /* Read a line */
         int len = shell_readline(t, line, sizeof(line));
@@ -466,7 +457,6 @@ static void shell_task(void *pv) {
     }
 
     /* Shell exiting — clean up per-shell temp directory and destroy terminal */
-    printf("[shell] shell task exiting, cleaning up %s\n", tmpdir);
     rm_rf(tmpdir);
     terminal_destroy(t);
     /* Free the shell's cmd_ctx_t (env vars, pids entry, struct itself) */

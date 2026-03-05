@@ -347,8 +347,6 @@ hwnd_t terminal_create(void) {
         vPortFree(t);
         return HWND_NULL;
     }
-    printf("[terminal_create] textbuf=%p size=%u\n",
-           t->textbuf, (unsigned)t->textbuf_size);
     /* Fill with spaces, white-on-black */
     uint8_t attr = TB_PACK(COLOR_WHITE, COLOR_BLACK);
     for (int i = 0; i < t->cols * t->rows; i++) {

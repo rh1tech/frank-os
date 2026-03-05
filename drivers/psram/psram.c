@@ -148,8 +148,6 @@ void *psram_alloc(size_t size) {
     }
 
     (void)xTaskResumeAll();
-    if (result)
-        printf("[psram_alloc] %u bytes -> %p\n", (unsigned)size, result);
     return result;
 }
 

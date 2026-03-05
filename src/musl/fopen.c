@@ -105,7 +105,6 @@ FILE* __libc() __fopen(const char *restrict filename, const char *restrict mode)
 	/* Compute the flags to pass to open() */
 	flags = __fmodeflags(mode);
 
-	printf("[fopen] '%s' mode='%s' flags=%d heap=%u\n", filename, mode, flags, (unsigned)xPortGetFreeHeapSize());
 	fd = __openat(AT_FDCWD, filename, flags, 0666);
 	if (fd < 0) return 0;
 	if (flags & O_CLOEXEC) {
@@ -113,7 +112,6 @@ FILE* __libc() __fopen(const char *restrict filename, const char *restrict mode)
 	}
 	f = __fdopen(fd, mode);
 	if (f) {
-		printf("[fopen] ok FILE*=%p fd=%d heap=%u\n", f, fd, (unsigned)xPortGetFreeHeapSize());
 		return f;
 	}
 

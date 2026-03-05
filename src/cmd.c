@@ -670,20 +670,16 @@ void __in_hfa() op_console(cmd_ctx_t* ctx, FRFpvUpU_ptr_t fn, BYTE mode) {
     if(!tmp) tmp = "";
     size_t cdl = strlen(tmp);
     char * mc_con_file = concat(tmp, _mc_con);
-    printf("[op_console] file='%s' mode=%d\n", mc_con_file, mode);
     FIL* pfh = (FIL*)pvPortMalloc(sizeof(FIL));
     if (FR_OK != f_open(pfh, mc_con_file, mode)) {
-        printf("[op_console] f_open failed\n");
         goto r;
     }
     size_t sz = (get_screen_width() * get_screen_height() * get_screen_bitness()) >> 3;
     size_t buf_sz = get_buffer_size();
     if (sz > buf_sz) sz = buf_sz;  /* clamp to actual buffer allocation */
-    printf("[op_console] buf=%p sz=%u\n", get_buffer(), (unsigned)sz);
     UINT rb;
     fn(pfh, get_buffer(), sz, &rb);
     f_close(pfh);
-    printf("[op_console] done rb=%u\n", rb);
     /* After restoring textbuf from file, repaint the terminal */
     terminal_invalidate_active();
 r:

@@ -90,7 +90,6 @@ void display_init(void) {
     // Start DVI output (launches Core 1 internally)
     DispHstxSelDispMode(DISPHSTX_DISPMODE_DVI, vmode);
 
-    printf("DispHSTX: 640x480x4 DVI initialized\n");
 }
 
 // Set pixel in the draw buffer (pair-encoded: 2 pixels per byte)
@@ -135,7 +134,6 @@ void display_draw_test_pattern(void) {
             memset(&row[bar * 20], fill, 20);
         }
     }
-    printf("Test pattern: 16 color bars (640x480, pair-encoded)\n");
 }
 
 /*==========================================================================

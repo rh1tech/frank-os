@@ -624,7 +624,6 @@ int __in_hfa() __openat(int dfd, const char* _path, int flags, mode_t mode) {
     init_pfiles(ctx);
     int realpath_flags = (flags & O_NOFOLLOW) ? AT_SYMLINK_NOFOLLOW : AT_SYMLINK_FOLLOW;
     char* path = __realpathat(dfd, _path, 0, realpath_flags);
-    printf("[__openat] dfd=%d path='%s' flags=%d mode=%o\n", dfd, path ? path : "null", flags, mode);
     if (!path) return -1; // errno from __realpathat
     size_t n;
     FDESC* fd = array_lookup_first_closed(ctx->pfiles, &n);
