@@ -46,6 +46,7 @@
 #include "psram.h"
 #include "mp3dec.h"
 #include "midi_opl.h"
+#include "display.h"
 #include "clipboard.h"
 #include "controls.h"
 #include "find_dialog.h"
@@ -690,6 +691,27 @@ unsigned long __in_systable() __aligned(4096) sys_table_ptrs[] = {
     wm_set_pending_icon32,  // 512
     ico_parse_16,           // 513
     ico_parse_32,           // 514
+    // API v.36 — Video mode switching
+    display_set_video_mode, // 515
+    display_get_video_mode, // 516
+    display_set_palette_entry, // 517
+    &display_width,         // 518
+    &display_height,        // 519
+    &display_fb_stride,     // 520
+    &display_bpp,           // 521
+    // API v.37 — Direct framebuffer access for fullscreen 8bpp apps
+    &display_draw_buffer_ptr, // 522
+    display_set_pixel,        // 523
+    display_clear,            // 524
+    display_wait_vsync,       // 525
+    display_swap_buffers,     // 526
+    keyboard_poll,            // 527
+    keyboard_get_event,       // 528
+    // API v.38 — Direct SRAM allocator (bypasses PSRAM)
+    pvPortMalloc,             // 529
+    vPortFree,                // 530
+    display_request_mode,     // 531
+    &display_compositor_idle, // 532
     // TODO:
     0
 };

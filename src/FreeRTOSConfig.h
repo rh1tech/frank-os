@@ -24,7 +24,7 @@
 /* Memory */
 #define configSUPPORT_DYNAMIC_ALLOCATION        1
 #define configSUPPORT_STATIC_ALLOCATION         1
-#define configTOTAL_HEAP_SIZE                   ((size_t)(128 * 1024))
+#define configTOTAL_HEAP_SIZE                   ((size_t)(135 * 1024))
 #define configAPPLICATION_ALLOCATED_HEAP        0
 
 /* CPU */

@@ -241,9 +241,14 @@ typedef struct {
  * Display / taskbar constants
  * ======================================================================== */
 
+/* Default desktop resolution */
 #define DISPLAY_WIDTH   640
 #define DISPLAY_HEIGHT  480
 #define TASKBAR_HEIGHT   28
+
+/* Video mode constants */
+#define VIDEO_MODE_640x480x16   0   /* Desktop: 640x480, 4bpp, 16 colors   */
+#define VIDEO_MODE_320x240x256  1   /* Fullscreen: 320x240, 8bpp, 256 colors */
 
 /* ========================================================================
  * Font constants
@@ -883,6 +888,111 @@ static inline void wm_toggle_fullscreen(hwnd_t hwnd) {
 static inline bool wm_is_fullscreen(hwnd_t hwnd) {
     typedef bool (*fn_t)(hwnd_t);
     return ((fn_t)_sys_table_ptrs[503])(hwnd);
+}
+
+/* ========================================================================
+ * Video mode API (indices 515–521)
+ * ======================================================================== */
+
+/* 515: display_set_video_mode — switch video mode at runtime.
+ * mode: VIDEO_MODE_640x480x16 or VIDEO_MODE_320x240x256.
+ * Stops DVI, reconfigures, clears framebuffer, restarts DVI.
+ * Returns 0 on success, negative on error.
+ * WARNING: In 320x240x256 mode, the desktop/windowed UI is not available.
+ *          Use this for fullscreen apps only. Restore 640x480x16 before exit. */
+static inline int display_set_video_mode(uint8_t mode) {
+    typedef int (*fn_t)(uint8_t);
+    return ((fn_t)_sys_table_ptrs[515])(mode);
+}
+
+/* 516: display_get_video_mode — returns current VIDEO_MODE_* */
+static inline uint8_t display_get_video_mode(void) {
+    typedef uint8_t (*fn_t)(void);
+    return ((fn_t)_sys_table_ptrs[516])();
+}
+
+/* 517: display_set_palette_entry — set one entry in the 256-color palette.
+ * index: 0..255, rgb888: 0xRRGGBB.
+ * Only meaningful in VIDEO_MODE_320x240x256. */
+static inline void display_set_palette_entry(uint8_t index, uint32_t rgb888) {
+    typedef void (*fn_t)(uint8_t, uint32_t);
+    ((fn_t)_sys_table_ptrs[517])(index, rgb888);
+}
+
+/* 518-521: Runtime display dimensions (read via pointer dereference).
+ * These reflect the currently active video mode. */
+static inline uint16_t display_get_width(void) {
+    return *(const uint16_t *)_sys_table_ptrs[518];
+}
+static inline uint16_t display_get_height(void) {
+    return *(const uint16_t *)_sys_table_ptrs[519];
+}
+static inline uint16_t display_get_fb_stride(void) {
+    return *(const uint16_t *)_sys_table_ptrs[520];
+}
+static inline uint8_t display_get_bpp(void) {
+    return *(const uint8_t *)_sys_table_ptrs[521];
+}
+
+/* 522: display_get_framebuffer — direct pointer to the draw buffer.
+ * In VIDEO_MODE_320x240x256: 320×240 bytes, 1 byte per pixel (palette index).
+ * In VIDEO_MODE_640x480x16:  320×480 bytes, 4bpp packed (2 pixels per byte).
+ * The pointer is dereferenced at call time (pointer-to-pointer in sys_table). */
+static inline uint8_t *display_get_framebuffer(void) {
+    return *(uint8_t **)_sys_table_ptrs[522];
+}
+
+/* 523: display_set_pixel — mode-aware pixel set with bounds check */
+static inline void display_set_pixel(int x, int y, uint8_t color) {
+    typedef void (*fn_t)(int, int, uint8_t);
+    ((fn_t)_sys_table_ptrs[523])(x, y, color);
+}
+
+/* 524: display_clear — clear entire framebuffer to a color */
+static inline void display_clear(uint8_t color) {
+    typedef void (*fn_t)(uint8_t);
+    ((fn_t)_sys_table_ptrs[524])(color);
+}
+
+/* 525: display_wait_vsync — block until next vertical blank */
+static inline void display_wait_vsync(void) {
+    typedef void (*fn_t)(void);
+    ((fn_t)_sys_table_ptrs[525])();
+}
+
+/* 526: display_swap_buffers — swap front/back buffers (currently no-op) */
+static inline void display_swap_buffers(void) {
+    typedef void (*fn_t)(void);
+    ((fn_t)_sys_table_ptrs[526])();
+}
+
+/* ========================================================================
+ * Direct keyboard API for fullscreen apps (indices 527–528)
+ *
+ * In VIDEO_MODE_320x240x256 the windowed UI / compositor is suspended,
+ * so WM_KEYDOWN / WM_KEYUP events are not dispatched.  Fullscreen apps
+ * must poll the keyboard directly using these two functions.
+ * ======================================================================== */
+
+typedef struct {
+    uint8_t hid_code;   /* HID usage code (same scancodes as WM_KEYDOWN) */
+    uint8_t ascii;      /* ASCII translation (0 if non-printable)        */
+    uint8_t modifiers;  /* Active modifier mask at time of event         */
+    bool    pressed;    /* true = press, false = release                 */
+} app_key_event_t;
+
+/* 527: keyboard_poll — read pending PS/2 scancodes into the event queue.
+ * Call this at least once per frame (~60 Hz) to avoid losing key events. */
+static inline void keyboard_poll(void) {
+    typedef void (*fn_t)(void);
+    ((fn_t)_sys_table_ptrs[527])();
+}
+
+/* 528: keyboard_get_event — dequeue one key event.
+ * Returns true if an event was available, false if queue is empty. */
+static inline bool keyboard_get_event(app_key_event_t *ev) {
+    typedef bool (*fn_t)(app_key_event_t *);
+    return ((fn_t)_sys_table_ptrs[528])(ev);
 }
 
 /* 504: wm_find_window_by_title — find alive+visible window by title.

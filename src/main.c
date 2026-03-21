@@ -378,6 +378,20 @@ static void compositor_task(void *params) {
     bool boot_cursor_active = true;
 
     for (;;) {
+        /* In fullscreen 8bpp mode, the app owns the display.
+         * Skip compositor (no windows, no cursor, no recomposite).
+         * Short sleep so we resume quickly when mode is restored.
+         * Force full repaint on the first frame back in desktop mode. */
+        if (display_video_mode == VIDEO_MODE_320x240x256) {
+            display_compositor_idle = 1;
+            do { vTaskDelay(pdMS_TO_TICKS(10)); }
+            while (display_video_mode == VIDEO_MODE_320x240x256);
+            display_compositor_idle = 0;
+            wm_force_full_repaint();
+            g_video_dirty = true;
+            continue;
+        }
+
         /* End boot sequence: show taskbar and hide cursor */
         if (boot_cursor_active && xTaskGetTickCount() >= boot_deadline) {
             boot_cursor_active = false;
@@ -488,11 +502,20 @@ static void input_task(void *params) {
     (void)params;
 
     /* Absolute cursor position — start at screen center */
-    int16_t cur_x = DISPLAY_WIDTH / 2;
-    int16_t cur_y = DISPLAY_HEIGHT / 2;
+    int16_t cur_x = display_width / 2;
+    int16_t cur_y = display_height / 2;
     uint8_t prev_buttons = 0;
 
     for (;;) {
+        /* In fullscreen 8bpp mode, the app owns the display and keyboard.
+         * Skip all input processing so keyboard_poll/get_event are available
+         * exclusively to the fullscreen app, and mouse cursor is suppressed. */
+        if (display_video_mode == VIDEO_MODE_320x240x256) {
+            do { vTaskDelay(pdMS_TO_TICKS(10)); }
+            while (display_video_mode == VIDEO_MODE_320x240x256);
+            continue;
+        }
+
         /* Poll keyboard */
         keyboard_poll();
 
@@ -703,9 +726,9 @@ static void input_task(void *params) {
 
             /* Clamp to screen bounds */
             if (cur_x < 0) cur_x = 0;
-            if (cur_x >= DISPLAY_WIDTH) cur_x = DISPLAY_WIDTH - 1;
+            if (cur_x >= display_width) cur_x = display_width - 1;
             if (cur_y < 0) cur_y = 0;
-            if (cur_y >= DISPLAY_HEIGHT) cur_y = DISPLAY_HEIGHT - 1;
+            if (cur_y >= display_height) cur_y = display_height - 1;
 
             wm_set_cursor_pos(cur_x, cur_y);
             wm_set_mouse_buttons(buttons);

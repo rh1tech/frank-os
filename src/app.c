@@ -1128,7 +1128,10 @@ a6:
             }
         }
         size_t free_heap = xPortGetFreeHeapSize();
-        g_sram_for_code = (code_alloc + (32 << 10) <= free_heap);
+        g_sram_for_code = (code_alloc + (4 << 10) <= free_heap);
+        printf("[load_app] code=%u free=%u -> %s\n",
+               (unsigned)code_alloc, (unsigned)free_heap,
+               g_sram_for_code ? "SRAM" : "PSRAM");
     }
 
     bootb_ctx->req_ver_fn = load_sec2mem_wrapper(pctx, req_idx, try_to_use_flash);
