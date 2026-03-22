@@ -265,6 +265,30 @@ static void push_audio(void) {
  * ====================================================================== */
 
 int main(int argc, char **argv) {
+    /* Check for ROM path argument — show dialog if launched without one */
+    if (argc < 2 || !argv[1] || !argv[1][0]) {
+        dialog_show(HWND_NULL, "Dendy",
+                    "Open a .nes ROM file from\n"
+                    "the Navigator to play.",
+                    DLG_ICON_INFO, DLG_BTN_OK);
+        return 0;
+    }
+
+    /* Check if code was placed in SRAM (fast) or PSRAM (too slow).
+     * The ELF loader sets code placement based on free heap at load time.
+     * If we ended up in PSRAM, emulation will be unplayably slow. */
+    {
+        extern uint32_t __app_flags(void);
+        uintptr_t code_addr = (uintptr_t)__app_flags;
+        if (code_addr >= 0x15000000 && code_addr < 0x15800000) {
+            dialog_show(HWND_NULL, "Dendy",
+                        "Not enough SRAM to run.\n"
+                        "Close other apps and retry.",
+                        DLG_ICON_ERROR, DLG_BTN_OK);
+            return 0;
+        }
+    }
+
     /* Allocate globals in SRAM */
     app_globals_t *globals = (app_globals_t *)pvPortMalloc(sizeof(app_globals_t));
     if (!globals) { serial_printf("dendy: globals alloc failed\n"); return 1; }
@@ -285,7 +309,7 @@ int main(int argc, char **argv) {
     }
     memset(G->qnes_state, 0, qs_size);
 
-    /* Allocate pixel buffers in PSRAM (too large for 128KB SRAM heap).
+    /* Allocate pixel buffers in PSRAM (too large for SRAM heap).
      * Each buffer: (256+16) * (240+2) = 65,824 bytes. */
     {
         #define PIXEL_BUF_SIZE ((256 + 16) * (240 + 2))
@@ -308,15 +332,6 @@ int main(int argc, char **argv) {
     G->audio_buf = (int16_t *)pvPortMalloc(256 * 2 * sizeof(int16_t));
     if (!G->audio_buf) {
         serial_printf("dendy: audio buf alloc failed\n");
-        vPortFree(G->qnes_state);
-        vPortFree(globals);
-        return 1;
-    }
-
-    /* Check for ROM path argument */
-    if (argc < 2 || !argv[1] || !argv[1][0]) {
-        serial_printf("dendy: no ROM path specified\n");
-        vPortFree(G->audio_buf);
         vPortFree(G->qnes_state);
         vPortFree(globals);
         return 1;

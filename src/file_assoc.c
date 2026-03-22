@@ -105,12 +105,12 @@ static bool load_ico_icons(const char *base_path, fa_app_t *app) {
     if (f_open(&f, ico_path, FA_READ) != FR_OK) return false;
 
     FSIZE_t fsize = f_size(&f);
-    if (fsize < 22 || fsize > 2048) {   /* sanity: min ICO = ~22 bytes */
+    if (fsize < 22 || fsize > 4096) {   /* sanity: min ICO = ~22 bytes */
         f_close(&f);
         return false;
     }
 
-    uint8_t buf[2048];
+    uint8_t buf[4096];
     UINT br;
     if (f_read(&f, buf, (UINT)fsize, &br) != FR_OK || br != (UINT)fsize) {
         f_close(&f);

@@ -142,8 +142,8 @@ static void fos_scan(void) {
                 FIL ico;
                 if (f_open(&ico, ico_path, FA_READ) == FR_OK) {
                     FSIZE_t fsize = f_size(&ico);
-                    if (fsize >= 22 && fsize <= 2048) {
-                        uint8_t ibuf[2048];
+                    if (fsize >= 22 && fsize <= 4096) {
+                        uint8_t ibuf[4096];
                         UINT ibr;
                         if (f_read(&ico, ibuf, (UINT)fsize, &ibr) == FR_OK
                             && ibr == (UINT)fsize) {
@@ -565,8 +565,8 @@ static void draw_sidebar_logo(int sx, int sy, int bar_w, int bar_h) {
                 if (row_bits & (1u << (15 - src_col))) {
                     int px = logo_x + nx;
                     int spy = py + ny;
-                    if ((unsigned)px < (unsigned)DISPLAY_WIDTH &&
-                        (unsigned)spy < (unsigned)DISPLAY_HEIGHT)
+                    if ((unsigned)px < (unsigned)display_width &&
+                        (unsigned)spy < (unsigned)display_height)
                         display_set_pixel_fast(px, spy, COLOR_WHITE);
                 }
             }
@@ -864,10 +864,10 @@ bool startmenu_mouse(uint8_t type, int16_t x, int16_t y) {
             sm_ctx_h = SM_CTX_ITEM_H + 4;       /* 1 item + borders */
             sm_ctx_x = x;
             sm_ctx_y = y;
-            if (sm_ctx_x + sm_ctx_w > DISPLAY_WIDTH)
-                sm_ctx_x = DISPLAY_WIDTH - sm_ctx_w;
-            if (sm_ctx_y + sm_ctx_h > DISPLAY_HEIGHT)
-                sm_ctx_y = DISPLAY_HEIGHT - sm_ctx_h;
+            if (sm_ctx_x + sm_ctx_w > display_width)
+                sm_ctx_x = display_width - sm_ctx_w;
+            if (sm_ctx_y + sm_ctx_h > display_height)
+                sm_ctx_y = display_height - sm_ctx_h;
             sm_ctx_hover = -1;
             sm_ctx_open = true;
             wm_mark_dirty();
