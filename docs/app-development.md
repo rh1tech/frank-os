@@ -343,9 +343,54 @@ uint32_t __app_flags(void) {
 | `APPFLAG_BACKGROUND` | App keeps running when not focused |
 | `APPFLAG_SINGLETON` | Only one instance allowed |
 
+### Sound Mixer
+
+```c
+// Open a channel at desired sample rate
+int ch = snd_open(22050);
+
+// Write stereo 16-bit PCM (blocks until DMA has room)
+int16_t samples[512];
+snd_write(ch, samples, 256);  // 256 stereo sample pairs
+
+// Done
+snd_close(ch);
+```
+
+The mixer resamples per-channel to 44100 Hz and mixes all active channels. See the API reference for volume control (`snd_set_volume`/`snd_get_volume`).
+
+### PSRAM Allocator
+
+For large buffers (ROM images, sample data) that don't need SRAM speed:
+
+```c
+if (psram_is_available()) {
+    uint8_t *rom = psram_alloc(262144);  // 256 KB
+    // load ROM into rom...
+    psram_free(rom);
+}
+```
+
+### Fullscreen 8bpp Mode
+
+Apps can request exclusive fullscreen with a 256-color palette (used by Dendy):
+
+```c
+display_request_mode(320, 240, 8);
+
+// Set palette, render to display_draw_buffer_ptr, call display_swap_buffers()
+// Poll keyboard directly with keyboard_poll() / keyboard_get_event()
+
+// Restore desktop before exiting
+display_request_mode(640, 480, 4);
+wm_force_full_repaint();
+```
+
+In this mode the compositor and input tasks are paused. The app has exclusive access to the framebuffer and keyboard. See the API reference for the full list of display/keyboard functions.
+
 ## Icon Format
 
-App icons are Windows .ico files placed in `assets/apps/<appname>.ico`. The build tools convert them to the internal format (1 byte per pixel, 0xFF = transparent, palette indices 0-15).
+App icons are `.ico` files placed in each app's source directory (`apps/source/<appname>/<appname>.ico`). The build script copies them to `sdcard/fos/`. The OS parses ICO files at runtime via `ico_parse_16` and `ico_parse_32`.
 
 Two sizes are used:
 - **16x16** — taskbar buttons, file manager small icons
@@ -355,7 +400,7 @@ Two sizes are used:
 
 1. Place your source in `apps/source/myapp/`
 2. Create `CMakeLists.txt` following the template above
-3. Optionally add `assets/apps/myapp.ico` for an icon
+3. Optionally add `apps/source/myapp/myapp.ico` for an icon
 4. Add your app to `tools/regen_inf.py` APPS list
 5. Run `cd apps && ./build_apps.sh`
 6. Copy `sdcard/fos/` contents to your SD card

@@ -1,6 +1,6 @@
 # FRANK OS API Reference
 
-This is the complete reference for the FRANK OS application API defined in `apps/api/frankos-app.h`. All functions are called through the MOS2 sys_table.
+API reference for `apps/api/frankos-app.h`. All functions are called through the MOS2 sys_table.
 
 ## sys_table Indices
 
@@ -35,10 +35,25 @@ This is the complete reference for the FRANK OS application API defined in `apps
 | 429 | `pvTimerGetTimerID` | Timers |
 | 430 | `xTaskGenericNotify` | Tasks |
 | 431 | `ulTaskGenericNotifyTake` | Tasks |
+| 432 | `wm_set_pending_icon` | Icons |
+| 433 | `wd_icon_32` | Drawing |
+| 434 | `wd_icon_16` | Drawing |
+| 435 | `menu_popup_show` | Menus |
+| 436 | `dialog_input_show` | Dialogs |
+| 437 | `dialog_input_get_text` | Dialogs |
+| 438 | `printf` | Serial debug (USB) |
 | 439 | `file_dialog_open` | File dialogs |
 | 440 | `file_dialog_get_path` | File dialogs |
 | 441 | `wd_button` | Controls |
 | 442 | `wd_fb_ptr` | Direct framebuffer |
+| 443 | `MP3InitDecoder` | MP3 decoding |
+| 444 | `MP3FreeDecoder` | MP3 decoding |
+| 445 | `MP3FindSyncWord` | MP3 decoding |
+| 446 | `MP3Decode` | MP3 decoding |
+| 447 | `MP3GetLastFrameInfo` | MP3 decoding |
+| 448 | `MP3GetNextFrameInfo` | MP3 decoding |
+| 449 | `pcm_init` | PCM audio |
+| 450 | `pcm_write` | PCM audio |
 | 451 | `clipboard_set_text` | Clipboard |
 | 452 | `clipboard_get_text` | Clipboard |
 | 453 | `clipboard_get_length` | Clipboard |
@@ -71,6 +86,17 @@ This is the complete reference for the FRANK OS application API defined in `apps
 | 480 | `find_dialog_case_sensitive` | Find/Replace |
 | 481 | `find_dialog_close` | Find/Replace |
 | 482 | `wm_mark_dirty` | Window management |
+| 483 | `snd_open` | Sound mixer |
+| 484 | `snd_write` | Sound mixer |
+| 485 | `snd_close` | Sound mixer |
+| 486 | `hxcmod_init` | MOD playback |
+| 487 | `hxcmod_setcfg` | MOD playback |
+| 488 | `hxcmod_load` | MOD playback |
+| 489 | `hxcmod_fillbuffer` | MOD playback |
+| 490 | `hxcmod_unload` | MOD playback |
+| 491 | `psram_alloc` | PSRAM allocator |
+| 492 | `psram_free` | PSRAM allocator |
+| 493 | `psram_is_available` | PSRAM allocator |
 | 494 | `file_assoc_scan` | File associations |
 | 495 | `file_assoc_find` | File associations |
 | 496 | `file_assoc_find_all` | File associations |
@@ -89,6 +115,30 @@ This is the complete reference for the FRANK OS application API defined in `apps
 | 509 | `midi_opl_playing` | MIDI/OPL audio |
 | 510 | `midi_opl_set_loop` | MIDI/OPL audio |
 | 511 | `midi_opl_free` | MIDI/OPL audio |
+| 512 | `wm_set_pending_icon32` | Icons |
+| 513 | `ico_parse_16` | Icons |
+| 514 | `ico_parse_32` | Icons |
+| 515 | `display_set_video_mode` | Video mode |
+| 516 | `display_get_video_mode` | Video mode |
+| 517 | `display_set_palette_entry` | Video mode |
+| 518 | `&display_width` | Video mode (variable) |
+| 519 | `&display_height` | Video mode (variable) |
+| 520 | `&display_fb_stride` | Video mode (variable) |
+| 521 | `&display_bpp` | Video mode (variable) |
+| 522 | `&display_draw_buffer_ptr` | Direct framebuffer |
+| 523 | `display_set_pixel` | Direct framebuffer |
+| 524 | `display_clear` | Direct framebuffer |
+| 525 | `display_wait_vsync` | Direct framebuffer |
+| 526 | `display_swap_buffers` | Direct framebuffer |
+| 527 | `keyboard_poll` | Direct input |
+| 528 | `keyboard_get_event` | Direct input |
+| 529 | `pvPortMalloc` | SRAM allocator |
+| 530 | `vPortFree` | SRAM allocator |
+| 531 | `display_request_mode` | Video mode |
+| 532 | `&display_compositor_idle` | Video mode (variable) |
+| 533 | `wm_force_full_repaint` | Window management |
+| 534 | `snd_set_volume` | Sound mixer |
+| 535 | `snd_get_volume` | Sound mixer |
 
 ## Data Types
 
@@ -272,14 +322,14 @@ typedef struct {
 
 ### Display Constants
 
-| Constant | Value |
-|----------|-------|
-| `DISPLAY_WIDTH` | 640 |
-| `DISPLAY_HEIGHT` | 480 |
-| `TASKBAR_HEIGHT` | 28 |
-| `FONT_UI_WIDTH` | 6 |
-| `FONT_UI_HEIGHT` | 12 |
-| `SCROLLBAR_WIDTH` | 16 |
+| Constant | Value | Notes |
+|----------|-------|-------|
+| `DISPLAY_WIDTH` | 640 | Desktop mode (read `display_width` for current) |
+| `DISPLAY_HEIGHT` | 480 | Desktop mode (read `display_height` for current) |
+| `TASKBAR_HEIGHT` | 28 | |
+| `FONT_UI_WIDTH` | 6 | |
+| `FONT_UI_HEIGHT` | 12 | |
+| `SCROLLBAR_WIDTH` | 16 | |
 
 ### Theme Constants
 
@@ -289,3 +339,77 @@ typedef struct {
 | `THEME_MENU_HEIGHT` | 20 | Menu bar height |
 | `THEME_BORDER_WIDTH` | 4 | Window border thickness |
 | `THEME_BUTTON_FACE` | `COLOR_LIGHT_GRAY` | Button face color |
+
+## Sound Mixer
+
+The sound mixer supports up to 4 concurrent channels. Each app gets its own channel.
+
+```c
+// Open a mixer channel (sample_rate in Hz, e.g. 44100)
+int ch = snd_open(44100);
+
+// Write interleaved stereo 16-bit PCM samples
+// Blocks until DMA has room
+snd_write(ch, samples, num_samples);
+
+// Close channel when done
+snd_close(ch);
+
+// Volume control (0-4)
+snd_set_volume(3);
+int vol = snd_get_volume();
+```
+
+Legacy `pcm_init`/`pcm_write` still work but route through the mixer internally.
+
+## PSRAM Allocator
+
+```c
+if (psram_is_available()) {
+    void *buf = psram_alloc(65536);  // 64 KB from PSRAM
+    // use buf...
+    psram_free(buf);
+}
+```
+
+For SRAM allocation (faster, limited), use `pvPortMalloc`/`vPortFree` (indices 529-530).
+
+## Video Mode Switching (Fullscreen 8bpp Apps)
+
+Apps like Dendy use a dedicated fullscreen 320x240 8bpp mode, bypassing the window manager entirely.
+
+```c
+// Request 320x240 8bpp mode (compositor suspends, app gets exclusive access)
+display_request_mode(320, 240, 8);
+
+// Set 256-color palette
+for (int i = 0; i < 64; i++)
+    display_set_palette_entry(i, rgb565_color);
+
+// Get direct framebuffer pointer
+uint8_t *fb = (uint8_t *)display_draw_buffer_ptr;
+int stride = display_fb_stride;
+
+// Render frame directly into fb
+// ...
+
+// Swap front/back buffers (waits for vsync internally)
+display_swap_buffers();
+
+// Poll keyboard directly (no WM events in fullscreen mode)
+keyboard_poll();
+keyboard_event_t ev;
+while (keyboard_get_event(&ev)) {
+    // handle key press/release
+}
+
+// Restore desktop mode before exiting
+display_request_mode(640, 480, 4);
+wm_force_full_repaint();
+```
+
+Display state variables (read via sys_table pointers):
+- `display_width`, `display_height` — current resolution
+- `display_fb_stride` — bytes per framebuffer row
+- `display_bpp` — bits per pixel (4 or 8)
+- `display_compositor_idle` — true when compositor is bypassed

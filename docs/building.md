@@ -80,6 +80,7 @@ Prompts for a version number (MAJOR.MINOR format), updates `version.txt`, builds
    ```
    /fos/       App binaries, .inf files, .ico icons
    /mos2/      MOS2 compatibility utilities
+   /uf2/       User firmware files (.uf2, .m2p2) — flashable from Start > Firmware
    ```
 3. Insert the card — it is auto-mounted at boot
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-FRANK OS is a FreeRTOS-based desktop operating system for the RP2350 microcontroller. It runs on a single RP2350B chip with 520 KB SRAM, 4 MB flash, optional QSPI PSRAM, and DVI output via the HSTX peripheral.
+FRANK OS is a FreeRTOS-based desktop operating system for the RP2350 microcontroller. It runs on a single RP2350B chip with 520 KB SRAM, 16 MB flash, optional QSPI PSRAM, and DVI output via the HSTX peripheral.
 
 ## Core Architecture
 
@@ -31,20 +31,28 @@ FRANK OS is a FreeRTOS-based desktop operating system for the RP2350 microcontro
 
 ## Memory Map
 
-### Flash (4 MB, 0x10000000 - 0x103FFFFF)
+### Flash (16 MB, 0x10000000 - 0x10FFFFFF)
+
+FRANK OS sits in the top 1 MB of flash. The lower ~15 MB is reserved for user firmware that can be flashed from the Start Menu without overwriting the OS.
 
 ```
 0x10000000  +-----------------------+
-            |  Pico SDK boot stage  |
+            |  BOOT2 vectors        |
             +-----------------------+
-            |  FRANK OS firmware    |
+            |  User firmware area   |
+            |  (~15 MB, offset 0)   |
+            |  .uf2/.m2p2 flashed   |
+            |  from Start > Firmware|
+            +-----------------------+
+0x10EFF000  |  ZERO_BLOCK           |  <-- saved sector 0 for boot redirect
+0x10F00000  |  FRANK OS code        |  <-- OS occupies top 1 MB
             |  (code + rodata)      |
             +-----------------------+
-0x10EFF000  |  ZERO_BLOCK           |
-0x10F00000  |  OS code top region   |
 0x10FFF000  |  sys_table (4 KB)     |  <-- MOS2 API entry point
 0x10FFFFFF  +-----------------------+
 ```
+
+Boot redirect: after flashing user firmware, the OS reboots via watchdog. On startup, `before_main()` checks an SRAM magic word and either jumps to the user firmware at offset 0 or falls through to FRANK OS. Holding Space on the PS/2 keyboard during boot escapes back to the OS.
 
 ### SRAM (520 KB)
 
@@ -84,10 +92,16 @@ Used for ELF application memory. Accessed via QSPI on CS1, auto-detected at boot
  HSTX peripheral -> DVI TMDS output -> Monitor
 ```
 
-- **Resolution:** 640x480 @ 60 Hz
-- **Color depth:** 4-bit paletted (16-color CGA/EGA palette)
-- **Pixel packing:** 2 pixels per byte (high nibble = even x, low nibble = odd x)
+Two video modes, hot-swappable during vblank:
+
+| Mode | Resolution | Color depth | Pixel packing | Use |
+|------|-----------|-------------|---------------|-----|
+| Desktop | 640x480 @ 60 Hz | 4-bit (16 colors) | 2 px/byte, high nibble = even x | Window manager |
+| Fullscreen | 320x240 @ 60 Hz | 8-bit (256 colors) | 1 px/byte | Emulator apps (Dendy, etc.) |
+
 - **Palette:** RGB565 converted from RGB888 at init, passed to DispHSTX
+- **Mode switch:** `display_request_mode()` reconfigures the DispHSTX vmode descriptor in-place during vblank, no DVI stop/restart needed
+- In fullscreen 8bpp mode, the compositor and input tasks are bypassed; the app gets exclusive keyboard and framebuffer access
 
 ## Window Manager
 
@@ -127,19 +141,25 @@ FRANK OS loads standalone ARM ELF binaries from the SD card. Apps are compiled a
 
 ### sys_table
 
-The sys_table is a fixed-address array of function pointers. Each OS API function has a reserved index. Apps call OS functions by reading the pointer at a known index and calling through it. This decouples app binaries from OS binary layout.
+The sys_table is a fixed-address array of function pointers at `0x10FFF000`. Apps call OS functions by reading the pointer at a known index and calling through it, so app binaries don't depend on OS binary layout.
 
 Key index ranges:
 - **0-100**: MOS2 core (filesystem, memory, tasks)
-- **404-433**: FRANK OS GUI (window management, drawing)
-- **439-440**: File dialogs
-- **441-442**: Buttons, direct framebuffer access
+- **404-442**: FRANK OS GUI (window management, drawing, menus, dialogs, icons)
+- **443-450**: MP3 decoding (Helix) and PCM audio
 - **451-454**: Clipboard
 - **455-459**: Scrollbar control
 - **460-474**: Textarea control
-- **475-481**: File save dialog, find/replace
+- **475-482**: File save dialog, find/replace
+- **483-485**: Sound mixer (multi-channel)
+- **486-490**: MOD tracker playback (HxCMod)
+- **491-493**: PSRAM allocator
 - **494-505**: File associations, desktop shortcuts, deferred launch
 - **506-511**: MIDI/OPL audio
+- **512-514**: 32x32 icons, ICO parsing
+- **515-521**: Video mode switching and display state
+- **522-528**: Direct framebuffer access, keyboard polling (fullscreen 8bpp apps)
+- **529-535**: SRAM allocator, display_request_mode, volume control
 
 ### App Lifecycle
 
@@ -149,6 +169,12 @@ Key index ranges:
 4. App handles events in its `event_handler` callback
 5. App paints its client area in its `paint_handler` callback
 6. On close: `wm_destroy_window()`, task exits, memory freed
+
+### App Suspension
+
+Only the foreground app runs on the shared 8 KB SRAM stack. When the user switches focus, the current app's stack is saved to PSRAM and the next app's stack is restored. Background-flagged apps (`APPFLAG_BACKGROUND`) keep running even when unfocused (e.g. FrankAmp continues playback).
+
+Force-closing a suspended app from the taskbar context menu frees its PSRAM-saved stack and task memory.
 
 ### App Exports
 
@@ -169,8 +195,10 @@ Apps can export special symbols:
 
 - **I2S output** via PIO on GPIO 20-21
 - **PWM beeper** on GPIO 22
+- **Mixer:** 4 concurrent channels with per-channel resampling, mixed in DMA IRQ handler at 44100 Hz with linear interpolation
 - **Codecs:** Helix MP3, HxCMod tracker, OPL FM synth (MIDI)
-- Audio runs in the app task context; rendering fills I2S DMA buffers
+- **Volume:** 5 levels, persisted in settings, controllable from taskbar tray or via `snd_set_volume`/`snd_get_volume`
+- Audio runs in the app task context; rendering fills I2S DMA buffers via `snd_open`/`snd_write`/`snd_close` or the legacy `pcm_init`/`pcm_write`
 
 ## Source Organization
 
@@ -211,6 +239,6 @@ lib/                    Third-party libraries (git submodules)
 
 apps/                   Standalone applications
   api/frankos-app.h     App development header
-  source/               App source code (8 apps)
+  source/               App source code (10 apps)
   build_apps.sh         Build script
 ```

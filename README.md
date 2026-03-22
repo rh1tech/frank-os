@@ -1,6 +1,6 @@
 # FRANK OS
 
-A complete desktop operating system for the RP2350 microcontroller. FRANK OS turns a $4 chip into a usable computer with a mouse-driven windowed GUI, a terminal, a file manager, and a library of applications — all running on 520 KB of SRAM.
+Desktop operating system for the RP2350 microcontroller. Windowed GUI with mouse, terminal, file manager, and apps, all in 520 KB of SRAM.
 
 Built on FreeRTOS with DVI video output, PS/2 keyboard and mouse input, SD card storage, and optional PSRAM for application memory. Compatible with [Murmulator OS 2](https://github.com/DnCraptor/murmulator-os2) applications.
 
@@ -10,17 +10,15 @@ Built on FreeRTOS with DVI video output, PS/2 keyboard and mouse input, SD card 
 
 ![Minesweeper](images/screenshot3.png)
 
-## What Makes It Special
+## Features
 
-- A full Windows 95-style desktop running on a microcontroller — not a framebuffer demo, but a working OS with window management, menus, dialogs, and multitasking
-- Loads and runs standalone ELF applications from SD card with a stable syscall API, so apps are binary-compatible across firmware updates
-- Ships with 8 graphical applications including a text editor, card games, an MP3 player, a ZX Spectrum emulator, and a BASIC interpreter
-- Dual-core architecture: Core 0 runs FreeRTOS (UI, input, apps), Core 1 is dedicated to real-time DVI scanline rendering
+- Windows 95-style desktop on a microcontroller: window management, menus, dialogs, multitasking
+- Loads standalone ELF apps from SD card via a stable syscall table (binary-compatible across firmware updates)
+- 10 built-in apps: text editor, card games, MP3 player, NES emulator, ZX Spectrum emulator, BASIC interpreter, and more
+- Dual-core: Core 0 runs FreeRTOS (UI, input, apps), Core 1 does real-time DVI scanline rendering
 - Hard fault recovery with crash dumps that survive warm resets
 
 ## Desktop Environment
-
-FRANK OS provides a complete Windows 95-style desktop with overlapping windows, a taskbar, and a Start menu.
 
 ### Window Manager
 - Overlapping windows with title bars, borders, and minimize/maximize/close buttons
@@ -40,10 +38,13 @@ FRANK OS provides a complete Windows 95-style desktop with overlapping windows, 
 - Scans `/fos/` on the SD card at boot and lists all discovered applications
 - Displays 32x32 app icons with names
 - Keyboard navigation with arrow keys
+- Firmware submenu lists `.uf2` and `.m2p2` files from `/uf2/` on the SD card for direct flashing
+- Right-click "Send to Desktop" on Programs items
 
 ### Desktop
 - Configurable background color (16-color palette)
 - Desktop shortcuts (up to 24) with right-click context menu
+- Keyboard navigation: arrow keys to move between icons, Enter to launch
 - Shortcuts persist across reboots via `/fos/desktop.dat`
 
 ### Alt+Tab Switcher
@@ -64,6 +65,8 @@ FRANK OS provides a complete Windows 95-style desktop with overlapping windows, 
 - Push buttons with Win95 raised/sunken bevel style
 - Scrollbars (vertical and horizontal, 16px)
 - Multi-line text areas with selection, undo, and up to 32 KB of text
+- Checkboxes and radio groups
+- Combobox dropdowns
 - Sliders for numerical input
 - Text fields with cursor and keyboard editing
 
@@ -107,13 +110,13 @@ The Terminal runs PShell, an interactive command interpreter. It can also launch
 
 ## Applications
 
-FRANK OS ships with 9 standalone applications:
+FRANK OS ships with 10 standalone applications:
 
 ### Terminal
 VT100 terminal emulator with multiple concurrent instances, each running its own shell session. Supports 16-color text, cursor movement, SGR escape sequences, and a 70x20 character grid (80x30 in fullscreen with Alt+Enter). Runs built-in shell commands and launches MOS2-compatible console applications from the SD card. The `sdcard/mos2/` directory includes 50+ command-line utilities (hex editor, file tools, benchmarks, and more).
 
 ### Notepad
-Full-featured text editor with menu bar, clipboard, find/replace, and syntax highlighting. Supports C, C++, and INI highlighting modes. Includes a Dev menu for compiling and running C source files directly.
+Text editor with menu bar, clipboard, find/replace, and syntax highlighting. Supports C, C++, and INI highlighting modes. Includes a Dev menu for compiling and running C source files directly.
 
 ### Solitaire
 Classic Klondike card game with Draw One and Draw Three modes. 45x60 pixel cards with suit symbols rendered as bitmap art. Proper cascading tableau, stock/waste pile, and four foundation piles.
@@ -124,8 +127,11 @@ Grid-based mine sweeper with three difficulty levels: Beginner (9x9, 10 mines), 
 ### Digger
 Port of the 1983 Windmill Software arcade game. Dig through levels collecting gold while avoiding monsters. Sprite-based rendering with level progression and score tracking.
 
+### Dendy (NES Emulator)
+NES emulator based on QuickNES, running in a dedicated fullscreen 320x240 8bpp video mode. Loads `.nes` ROM files from the SD card. Keyboard-mapped joypad with D-pad, A/B, Start/Select. Audio through the system mixer at 22050 Hz.
+
 ### ZX Spectrum 48K Emulator
-Full Zilog Z80 emulation with an ARM Thumb-2 assembly dispatcher for real-time performance on RP2350. Loads TAP tape files from SD card. Emulates the Spectrum keyboard matrix, 48 KB RAM across 3 banks, and the original ROM.
+Zilog Z80 emulation with an ARM Thumb-2 assembly dispatcher for real-time performance on RP2350. Loads TAP tape files from SD card. Emulates the Spectrum keyboard matrix, 48 KB RAM across 3 banks, and the original ROM.
 
 ### FrankAmp
 WinAmp 2.x-style MP3 player. Playlist of up to 64 tracks with shuffle and repeat modes. Transport controls (play/pause/stop/next/previous), seek bar, volume slider, and 7-segment time display. Decodes MP3 via the Helix fixed-point decoder.
@@ -145,6 +151,7 @@ The interactive shell that runs inside the terminal. Built-in commands for file 
 - Scrollbar for large directories (up to 128 entries)
 - Status bar showing file size and modification date
 - File type associations — double-click opens files in the registered app
+- "Open With" submenu for files with multiple registered handlers
 
 ## File Associations
 
@@ -176,17 +183,18 @@ Applications register the file extensions they handle via `.inf` metadata files.
 
 ## Display
 
-- **Resolution:** 640x480 at 60 Hz
-- **Color depth:** 4-bit paletted (16-color CGA/EGA palette)
+- **Desktop mode:** 640x480 at 60 Hz, 4-bit paletted (16 colors)
+- **Fullscreen mode:** 320x240 at 60 Hz, 8-bit paletted (256 colors), for emulator apps
 - **Output:** DVI via RP2350 HSTX peripheral
-- **Rendering:** Core 1 dedicated to real-time DVI scanline output via DispHSTX
+- **Rendering:** Core 1 does real-time DVI scanline output via DispHSTX
+- Video mode hot-swap during vblank (no DVI restart needed)
 
 ## Supported Board
 
 FRANK OS targets the [**FRANK M2**](https://github.com/rh1tech/frank) board — an RP2350B-based development board with DVI output, PS/2 ports, SD card slot, and PSRAM.
 
 - **MCU:** RP2350B (QFN-80, 48 GPIO)
-- **Flash:** 4 MB
+- **Flash:** 16 MB
 - **PSRAM:** QSPI (optional, auto-detected)
 - **Video:** DVI via HSTX peripheral
 - **Input:** PS/2 keyboard + PS/2 mouse
@@ -246,7 +254,7 @@ FRANK OS targets the [**FRANK M2**](https://github.com/rh1tech/frank) board — 
 
 ## Architecture
 
-FRANK OS is structured around FreeRTOS tasks running on Core 0 of the RP2350:
+FreeRTOS tasks on Core 0:
 
 | Task | Priority | Description |
 |------|----------|-------------|
@@ -257,21 +265,21 @@ FRANK OS is structured around FreeRTOS tasks running on Core 0 of the RP2350:
 | **Shell** (per terminal) | -- | Command-line interpreter |
 | **App** (per ELF) | -- | Standalone application task |
 
-Core 1 is dedicated to the DispHSTX DVI scanline renderer.
+Core 1 runs the DispHSTX DVI scanline renderer.
 
 ### Memory
 
 - **520 KB SRAM** — FreeRTOS heap, framebuffer (150 KB), task stacks, window state, terminal buffers
-- **4 MB flash** — firmware code and read-only data, sys_table at 0x10FFF000
+- **16 MB flash** — FRANK OS occupies the top 1 MB (0x10F00000), user firmware can be flashed at offset 0 without overwriting the OS; sys_table at 0x10FFF000
 - **PSRAM** (optional) — used for ELF application memory, auto-detected at boot
 
 ### ELF Application Model
 
-Apps are standalone ARM ELF binaries compiled against `apps/api/frankos-app.h`. They call OS services through a sys_table — a fixed-address array of 500+ function pointers. This means apps are binary-compatible across firmware versions without recompilation.
+Apps are standalone ARM ELF binaries compiled against `apps/api/frankos-app.h`. They call OS services through a sys_table, a fixed-address array of 500+ function pointers, so apps are binary-compatible across firmware versions without recompilation.
 
 ### Hard Fault Recovery
 
-Crash dumps are saved to uninitialized SRAM and survive warm resets, allowing post-mortem debugging of hard faults.
+Crash dumps are saved to uninitialized SRAM and survive warm resets for post-mortem debugging.
 
 ## Building
 
@@ -326,7 +334,7 @@ Compiled apps (binaries, `.inf` metadata, `.ico` icons) are placed directly in `
 
 ## Documentation
 
-Detailed documentation is available in the [`docs/`](docs/) directory:
+See the [`docs/`](docs/) directory:
 
 - [**Architecture**](docs/architecture.md) — system design, memory map, display pipeline, task model
 - [**Building**](docs/building.md) — prerequisites, build steps, flashing, SD card setup
@@ -355,3 +363,4 @@ Third-party components retain their original licenses (MIT, BSD-3-Clause, ISC, A
 - **Helix MP3 Decoder** (RealNetworks) — fixed-point MP3 decoding
 - **Digger Remastered** by Andrew Jenner — port of the 1983 Windmill Software arcade game
 - **[fMSX/Z80](https://fms.komkon.org/fMSX/)** by Marat Fayzullin — Z80 CPU emulation core
+- **[QuickNES](https://github.com/kode54/QuickNES)** by Shay Green (blargg) — NES emulation core used in Dendy
