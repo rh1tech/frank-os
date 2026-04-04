@@ -169,7 +169,7 @@ static void on_audio(plm_t *mpeg, plm_samples_t *samples, void *user);
 
 #define LINE_BUF_W 336
 
-/* 1:1 renderer — renders chroma rows [row_start, row_end) */
+/* 1:1 renderer with full 2×2 Bayer dithering */
 static void render_1x_rows(uint8_t *fb, plm_frame_t *frame,
                             int row_start, int row_end) {
     int cols = (int)frame->width >> 1;
@@ -313,8 +313,8 @@ static void render_2x(uint8_t *fb, plm_frame_t *frame) {
 static void on_video(plm_t *mpeg, plm_frame_t *frame, void *user) {
     (void)mpeg; (void)user;
 
-    /* Skip every 3rd frame — frees ~13ms for audio decode */
-    if (++G->skip_count >= 3) { G->skip_count = 0; return; }
+    G->skip_count ^= 1;
+    if (G->skip_count) return;
 
     uint8_t *fb = display_get_framebuffer();
     if (!fb) return;
@@ -481,7 +481,7 @@ int main(int argc, char **argv) {
     plm_set_video_decode_callback(G->plm, on_video, NULL);
     if (samplerate > 0) {
         plm_set_audio_decode_callback(G->plm, on_audio, NULL);
-        plm_set_audio_lead_time(G->plm, 0.1);
+        plm_set_audio_lead_time(G->plm, 0.2);
     }
 
     /* Main loop — plm_decode handles A/V sync, on_video skips every 3rd */
@@ -499,7 +499,6 @@ int main(int argc, char **argv) {
         uint32_t now = xTaskGetTickCount();
         uint32_t elapsed_ms = now - last_tick;
         last_tick = now;
-        if (elapsed_ms > 100) elapsed_ms = 100;
 
         plm_decode(G->plm, (double)elapsed_ms * 0.001);
 
