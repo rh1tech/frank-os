@@ -74,6 +74,7 @@ static void plm_load_cb(plm_buffer_t *buf, void *user) {
     if (buf->discard_read_bytes)
         plm_buffer_discard_read_bytes(buf);
     size_t bytes_available = buf->capacity - buf->length;
+    if (bytes_available > 32768) bytes_available = 32768;
     UINT br = 0;
     f_read(fil, buf->bytes + buf->length, (UINT)bytes_available, &br);
     buf->length += br;
@@ -466,18 +467,12 @@ int main(int argc, char **argv) {
         G->saved_volume = ((get_vol_t)_sys_table_ptrs[535])();
     }
 
-    /* Callbacks */
+    /* Callbacks — 100ms audio lead so plm_decode pre-buffers audio
+     * before calling on_video (which blocks during render) */
     plm_set_video_decode_callback(G->plm, on_video, NULL);
     if (samplerate > 0) {
         plm_set_audio_decode_callback(G->plm, on_audio, NULL);
-        plm_set_audio_lead_time(G->plm, (double)AUDIO_BUF_SAMPLES / samplerate);
-    }
-
-    /* Main loop — callback-based decode with frame skipping */
-    plm_set_video_decode_callback(G->plm, on_video, NULL);
-    if (samplerate > 0) {
-        plm_set_audio_decode_callback(G->plm, on_audio, NULL);
-        plm_set_audio_lead_time(G->plm, (double)AUDIO_BUF_SAMPLES / samplerate);
+        plm_set_audio_lead_time(G->plm, 0.1);
     }
 
     uint32_t last_tick = xTaskGetTickCount();
