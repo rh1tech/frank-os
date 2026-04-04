@@ -95,15 +95,24 @@ static size_t plm_tell_cb(plm_buffer_t *buf, void *user) {
  * RGB332 palette
  * ====================================================================== */
 
+/* 6×6×6 color cube (216 entries) + 40-step grayscale ramp.
+ * Index = r_level*36 + g_level*6 + b_level  (each 0-5).
+ * 6 levels per channel (step=51) vs RGB332's 8/8/4 — much better blues. */
 static void setup_palette(void) {
-    for (int i = 0; i < 256; i++) {
-        int r3 = (i >> 5) & 7;
-        int g3 = (i >> 2) & 7;
-        int b2 = i & 3;
-        uint32_t rgb = ((uint32_t)(r3 * 255 / 7) << 16)
-                     | ((uint32_t)(g3 * 255 / 7) << 8)
-                     | (uint32_t)(b2 * 255 / 3);
-        display_set_palette_entry((uint8_t)i, rgb);
+    for (int r = 0; r < 6; r++)
+        for (int g = 0; g < 6; g++)
+            for (int b = 0; b < 6; b++) {
+                int idx = r * 36 + g * 6 + b;
+                uint32_t rgb = ((uint32_t)(r * 51) << 16)
+                             | ((uint32_t)(g * 51) << 8)
+                             | (uint32_t)(b * 51);
+                display_set_palette_entry((uint8_t)idx, rgb);
+            }
+    /* Extra grayscale ramp in slots 216-255 for smoother darks */
+    for (int i = 0; i < 40; i++) {
+        uint8_t v = (uint8_t)(i * 255 / 39);
+        uint32_t rgb = ((uint32_t)v << 16) | ((uint32_t)v << 8) | v;
+        display_set_palette_entry((uint8_t)(216 + i), rgb);
     }
 }
 
@@ -129,10 +138,10 @@ static void init_tables(void) {
         G->y_tab[i] = (uint8_t)v;
     }
 
-    /* 2×2 Bayer: {{0,2},{3,1}}/4  →  thresholds scaled to quantization step
-     * R/G (3 bits, step≈36): {0,18,27,9}   B (2 bits, step=85): {0,42,64,21} */
-    int rg[4] = {0, 18, 27, 9};
-    int  b[4] = {0, 42, 64, 21};
+    /* 6×6×6 cube: step = 51, 2×2 Bayer thresholds = step × {0, 0.5, 0.75, 0.25}
+     * = {0, 25, 38, 13}.  R table outputs r_level*36, G outputs g_level*6,
+     * B outputs b_level.  Pixel index = R + G + B (addition, not OR). */
+    int th[4] = {0, 25, 38, 13};
 
     G->dt = (uint8_t *)pvPortMalloc(12 * DT_SZ);
     for (p = 0; p < 4; p++) {
@@ -141,12 +150,14 @@ static void init_tables(void) {
         uint8_t *db = G->dt + (p * 3 + 2) * DT_SZ;
         for (i = 0; i < DT_SZ; i++) {
             int v = i - DT_BIAS;
-            int rv = v + rg[p]; if (rv < 0) rv = 0; if (rv > 255) rv = 255;
-            int gv = v + rg[p]; if (gv < 0) gv = 0; if (gv > 255) gv = 255;
-            int bv = v +  b[p]; if (bv < 0) bv = 0; if (bv > 255) bv = 255;
-            dr[i] = (uint8_t)(rv & 0xE0);
-            dg[i] = (uint8_t)((gv >> 3) & 0x1C);
-            db[i] = (uint8_t)(bv >> 6);
+            if (v < 0) v = 0; if (v > 255) v = 255;
+
+            int rv = (v + th[p]) * 5 / 255; if (rv > 5) rv = 5;
+            int gv = (v + th[p]) * 5 / 255; if (gv > 5) gv = 5;
+            int bv = (v + th[p]) * 5 / 255; if (bv > 5) bv = 5;
+            dr[i] = (uint8_t)(rv * 36);
+            dg[i] = (uint8_t)(gv * 6);
+            db[i] = (uint8_t)(bv);
         }
     }
 }
@@ -200,13 +211,13 @@ static void render_1x(uint8_t *fb, plm_frame_t *frame) {
             int yy;
 
             yy = ytab[yl0[yi]];
-            fb[di]     = r0[yy+rd] | g0[yy-gd] | b0[yy+bd];
+            fb[di]     = r0[yy+rd] + g0[yy-gd] + b0[yy+bd];
             yy = ytab[yl0[yi+1]];
-            fb[di+1]   = r1[yy+rd] | g1[yy-gd] | b1[yy+bd];
+            fb[di+1]   = r1[yy+rd] + g1[yy-gd] + b1[yy+bd];
             yy = ytab[yl1[yi]];
-            fb[di+320] = r2[yy+rd] | g2[yy-gd] | b2[yy+bd];
+            fb[di+320] = r2[yy+rd] + g2[yy-gd] + b2[yy+bd];
             yy = ytab[yl1[yi+1]];
-            fb[di+321] = r3[yy+rd] | g3[yy-gd] | b3[yy+bd];
+            fb[di+321] = r3[yy+rd] + g3[yy-gd] + b3[yy+bd];
 
             yi += 2;
             di += 2;
@@ -267,25 +278,25 @@ static void render_2x(uint8_t *fb, plm_frame_t *frame) {
 
             /* TL source pixel — Bayer pos 0, fill 2×2 */
             yy = ytab[yl0[yi]];
-            px = rp[0][yy+rd] | gp[0][yy-gd] | bp[0][yy+bd];
+            px = rp[0][yy+rd] + gp[0][yy-gd] + bp[0][yy+bd];
             fb[di0]   = px; fb[di0+1] = px;
             fb[di1]   = px; fb[di1+1] = px;
 
             /* TR source pixel — Bayer pos 1 */
             yy = ytab[yl0[yi+1]];
-            px = rp[1][yy+rd] | gp[1][yy-gd] | bp[1][yy+bd];
+            px = rp[1][yy+rd] + gp[1][yy-gd] + bp[1][yy+bd];
             fb[di0+2] = px; fb[di0+3] = px;
             fb[di1+2] = px; fb[di1+3] = px;
 
             /* BL source pixel — Bayer pos 2 */
             yy = ytab[yl1[yi]];
-            px = rp[2][yy+rd] | gp[2][yy-gd] | bp[2][yy+bd];
+            px = rp[2][yy+rd] + gp[2][yy-gd] + bp[2][yy+bd];
             fb[di2]   = px; fb[di2+1] = px;
             fb[di3]   = px; fb[di3+1] = px;
 
             /* BR source pixel — Bayer pos 3 */
             yy = ytab[yl1[yi+1]];
-            px = rp[3][yy+rd] | gp[3][yy-gd] | bp[3][yy+bd];
+            px = rp[3][yy+rd] + gp[3][yy-gd] + bp[3][yy+bd];
             fb[di2+2] = px; fb[di2+3] = px;
             fb[di3+2] = px; fb[di3+3] = px;
 
