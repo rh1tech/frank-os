@@ -22,6 +22,21 @@
 
 #define PLM_NO_STDIO
 #define PLM_BUFFER_DEFAULT_SIZE (512 * 1024)
+
+/* Route pl_mpeg allocations to SRAM first (fast) for hot audio/video structs.
+ * Only the 512KB stream buffer will fall back to PSRAM. */
+static inline void *plm_sram_malloc(size_t sz) {
+    typedef void *(*fn_t)(size_t);
+    /* Try SRAM first */
+    void *p = ((fn_t)_sys_table_ptrs[529])(sz);
+    if (p) return p;
+    /* Fall back to PSRAM */
+    return ((fn_t)_sys_table_ptrs[32])(sz);
+}
+#define PLM_MALLOC(sz)      plm_sram_malloc(sz)
+#define PLM_FREE(p)         free(p)
+#define PLM_REALLOC(p, sz)  realloc(p, sz)
+
 #define PL_MPEG_IMPLEMENTATION
 #include "pl_mpeg.h"
 
@@ -138,12 +153,8 @@ static void init_tables(void) {
 
 #define LINE_BUF_W 336
 
-static void on_video(plm_t *mpeg, plm_frame_t *frame, void *user) {
-    (void)mpeg; (void)user;
-
-    uint8_t *fb = display_get_framebuffer();
-    if (!fb) return;
-
+/* 1:1 renderer for video width > 160 (e.g. 320x240) */
+static void render_1x(uint8_t *fb, plm_frame_t *frame) {
     int cols = (int)frame->width >> 1;
     int rows = (int)frame->height >> 1;
     int yw = (int)frame->y.width;
@@ -155,7 +166,6 @@ static void on_video(plm_t *mpeg, plm_frame_t *frame, void *user) {
     if (cols > 160) cols = 160;
     if (rows > 120) rows = 120;
 
-    /* Pre-biased dither table pointers — TL/TR/BL/BR × R/G/B */
     const uint8_t *r0 = G->dt + 0*DT_SZ + DT_BIAS;
     const uint8_t *g0 = G->dt + 1*DT_SZ + DT_BIAS;
     const uint8_t *b0 = G->dt + 2*DT_SZ + DT_BIAS;
@@ -187,8 +197,8 @@ static void on_video(plm_t *mpeg, plm_frame_t *frame, void *user) {
             int rd = (cr * 104597) >> 16;
             int gd = (cb * 25674 + cr * 53278) >> 16;
             int bd = (cb * 132201) >> 16;
-
             int yy;
+
             yy = ytab[yl0[yi]];
             fb[di]     = r0[yy+rd] | g0[yy-gd] | b0[yy+bd];
             yy = ytab[yl0[yi+1]];
@@ -202,6 +212,98 @@ static void on_video(plm_t *mpeg, plm_frame_t *frame, void *user) {
             di += 2;
         }
     }
+}
+
+/* 2× upscale renderer for video ≤ 160×120 → 320×240.
+ * Dithering applied per SOURCE pixel (not per display pixel): each source
+ * pixel uses one Bayer position based on its (col,row) parity, then fills
+ * its 2×2 display block with that single value. Adjacent source pixels
+ * get different thresholds, breaking up RGB332 banding at zero extra cost
+ * vs. non-dithered (still 1 lookup per source pixel). */
+static void render_2x(uint8_t *fb, plm_frame_t *frame) {
+    int cols = (int)frame->width >> 1;
+    int rows = (int)frame->height >> 1;
+    int yw = (int)frame->y.width;
+    int cw = (int)frame->cb.width;
+    int ox = G->offset_x;
+    int oy = G->offset_y;
+    const uint8_t *ytab = G->y_tab;
+
+    if (cols > 80) cols = 80;
+    if (rows > 60) rows = 60;
+
+    /* 4 Bayer positions — one per source pixel in each 2×2 chroma block:
+     *   TL = pos 0,  TR = pos 1,  BL = pos 2,  BR = pos 3 */
+    const uint8_t *rp[4], *gp[4], *bp[4];
+    for (int p = 0; p < 4; p++) {
+        rp[p] = G->dt + (p*3+0)*DT_SZ + DT_BIAS;
+        gp[p] = G->dt + (p*3+1)*DT_SZ + DT_BIAS;
+        bp[p] = G->dt + (p*3+2)*DT_SZ + DT_BIAS;
+    }
+
+    uint8_t yl0[LINE_BUF_W], yl1[LINE_BUF_W];
+    uint8_t cbl[LINE_BUF_W/2], crl[LINE_BUF_W/2];
+
+    for (int row = 0; row < rows; row++) {
+        memcpy(yl0, frame->y.data  + row*2*yw,      cols*2);
+        memcpy(yl1, frame->y.data  + row*2*yw + yw,  cols*2);
+        memcpy(cbl, frame->cb.data + row*cw,          cols);
+        memcpy(crl, frame->cr.data + row*cw,          cols);
+
+        int di0 = (oy + row*4)     * 320 + ox;
+        int di1 = (oy + row*4 + 1) * 320 + ox;
+        int di2 = (oy + row*4 + 2) * 320 + ox;
+        int di3 = (oy + row*4 + 3) * 320 + ox;
+        int yi = 0;
+
+        for (int col = 0; col < cols; col++) {
+            int cr = crl[col] - 128;
+            int cb = cbl[col] - 128;
+            int rd = (cr * 104597) >> 16;
+            int gd = (cb * 25674 + cr * 53278) >> 16;
+            int bd = (cb * 132201) >> 16;
+            int yy;
+            uint8_t px;
+
+            /* TL source pixel — Bayer pos 0, fill 2×2 */
+            yy = ytab[yl0[yi]];
+            px = rp[0][yy+rd] | gp[0][yy-gd] | bp[0][yy+bd];
+            fb[di0]   = px; fb[di0+1] = px;
+            fb[di1]   = px; fb[di1+1] = px;
+
+            /* TR source pixel — Bayer pos 1 */
+            yy = ytab[yl0[yi+1]];
+            px = rp[1][yy+rd] | gp[1][yy-gd] | bp[1][yy+bd];
+            fb[di0+2] = px; fb[di0+3] = px;
+            fb[di1+2] = px; fb[di1+3] = px;
+
+            /* BL source pixel — Bayer pos 2 */
+            yy = ytab[yl1[yi]];
+            px = rp[2][yy+rd] | gp[2][yy-gd] | bp[2][yy+bd];
+            fb[di2]   = px; fb[di2+1] = px;
+            fb[di3]   = px; fb[di3+1] = px;
+
+            /* BR source pixel — Bayer pos 3 */
+            yy = ytab[yl1[yi+1]];
+            px = rp[3][yy+rd] | gp[3][yy-gd] | bp[3][yy+bd];
+            fb[di2+2] = px; fb[di2+3] = px;
+            fb[di3+2] = px; fb[di3+3] = px;
+
+            yi += 2;
+            di0 += 4; di1 += 4; di2 += 4; di3 += 4;
+        }
+    }
+}
+
+static void on_video(plm_t *mpeg, plm_frame_t *frame, void *user) {
+    (void)mpeg; (void)user;
+    uint8_t *fb = display_get_framebuffer();
+    if (!fb) return;
+
+    if ((int)frame->width <= 160 && (int)frame->height <= 120)
+        render_2x(fb, frame);
+    else
+        render_1x(fb, frame);
 }
 
 /* ======================================================================
@@ -306,8 +408,13 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    G->offset_x = (320 - G->video_w) / 2;
-    G->offset_y = (240 - G->video_h) / 2;
+    /* Center on 320x240 display; account for 2× upscale if small */
+    int disp_w = G->video_w, disp_h = G->video_h;
+    if (G->video_w <= 160 && G->video_h <= 120) {
+        disp_w *= 2; disp_h *= 2;
+    }
+    G->offset_x = (320 - disp_w) / 2;
+    G->offset_y = (240 - disp_h) / 2;
     if (G->offset_x < 0) G->offset_x = 0;
     if (G->offset_y < 0) G->offset_y = 0;
 
@@ -345,10 +452,7 @@ int main(int argc, char **argv) {
 
     {
         typedef uint8_t (*get_vol_t)(void);
-        typedef void (*set_vol_t)(uint8_t);
         G->saved_volume = ((get_vol_t)_sys_table_ptrs[535])();
-        uint8_t new_vol = (G->saved_volume >= 2) ? G->saved_volume - 2 : 0;
-        ((set_vol_t)_sys_table_ptrs[534])(new_vol);
     }
 
     /* Callbacks */
@@ -358,7 +462,13 @@ int main(int argc, char **argv) {
         plm_set_audio_lead_time(G->plm, (double)AUDIO_BUF_SAMPLES / samplerate);
     }
 
-    /* Main loop */
+    /* Main loop — callback-based decode with frame skipping */
+    plm_set_video_decode_callback(G->plm, on_video, NULL);
+    if (samplerate > 0) {
+        plm_set_audio_decode_callback(G->plm, on_audio, NULL);
+        plm_set_audio_lead_time(G->plm, (double)AUDIO_BUF_SAMPLES / samplerate);
+    }
+
     uint32_t last_tick = xTaskGetTickCount();
     while (!G->closing) {
         process_input();
@@ -381,10 +491,6 @@ int main(int argc, char **argv) {
     }
 
     /* Cleanup */
-    {
-        typedef void (*set_vol_t)(uint8_t);
-        ((set_vol_t)_sys_table_ptrs[534])(G->saved_volume);
-    }
     if (samplerate > 0) pcm_cleanup();
 
     plm_destroy(G->plm);
