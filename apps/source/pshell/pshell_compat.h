@@ -72,6 +72,7 @@ int     vt100_getch_timeout(int us);
 void    vt100_ungetc(int c);
 void    vt100_get_size(int *cols, int *rows);
 void    vt100_input_flush(void);
+void    vt100_flush(void);
 
 /* ── LittleFS type compatibility ──────────────────────────────────────── */
 
@@ -258,8 +259,8 @@ static inline int pshell_sprintf(char *str, const char *fmt, ...) {
 /* sscanf — declare from toolchain's libc (linked, just need prototype) */
 int sscanf(const char *str, const char *fmt, ...);
 
-/* fflush → no-op */
-#define fflush(x)               ((void)0)
+/* fflush → flush VT100 display output */
+#define fflush(x)               vt100_flush()
 
 /* ungetc → VT100 ungetc */
 #define ungetc(c, f)            vt100_ungetc(c)

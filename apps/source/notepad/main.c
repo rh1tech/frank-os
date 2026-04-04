@@ -86,6 +86,18 @@ typedef struct {
     uint8_t      pending_action;
     uint8_t      syntax_mode;
     TimerHandle_t blink_timer;
+    /* Cached framebuffer info for flicker-free cursor blink.
+     * Set by np_paint(), used by blink callback for direct writes. */
+    uint8_t     *cached_fb;
+    int16_t      cached_stride;
+    int16_t      cached_cw;
+    int16_t      cached_ch;
+    /* Save/restore state for cursor blink — stores the pixel nibble
+     * values under the cursor so they can be perfectly restored. */
+    int16_t      cursor_fb_x;       /* client x of drawn cursor */
+    int16_t      cursor_fb_y;       /* client y of drawn cursor */
+    uint8_t      cursor_save[16];   /* saved nibble per row (FONT_UI_HEIGHT) */
+    bool         cursor_on_fb;      /* true if cursor is currently drawn on FB */
 } notepad_t;
 
 static notepad_t np;
@@ -469,7 +481,83 @@ static void np_dev_run(void) {
 
 static void np_blink_callback(TimerHandle_t xTimer) {
     (void)xTimer;
-    textarea_blink(&np.ta);
+
+    np.ta.cursor_visible = !np.ta.cursor_visible;
+
+    /* Direct framebuffer write for the cursor — avoids the full window
+     * repaint that wm_invalidate() would trigger via textarea_blink().
+     * On a single-buffer display, re-rendering all visible text lines
+     * every 500ms causes visible flickering.
+     *
+     * We save/restore the pixel nibble under the cursor so that
+     * erasing the cursor perfectly restores whatever was there
+     * (character stroke, background, syntax color, etc.). */
+    uint8_t *fb = np.cached_fb;
+    if (!fb) {
+        /* No cached FB yet (first paint hasn't run) — fall back */
+        wm_invalidate(np.hwnd);
+        return;
+    }
+
+    int16_t stride = np.cached_stride;
+
+    /* Step 1: erase previous cursor (restore saved pixels) */
+    if (np.cursor_on_fb) {
+        int16_t px = np.cursor_fb_x;
+        int16_t py = np.cursor_fb_y;
+        for (int r = 0; r < FONT_UI_HEIGHT; r++) {
+            uint8_t *byte = fb + (py + r) * stride + (px >> 1);
+            if (px & 1)
+                *byte = (*byte & 0xF0) | (np.cursor_save[r] & 0x0F);
+            else
+                *byte = (*byte & 0x0F) | ((np.cursor_save[r] & 0x0F) << 4);
+        }
+        np.cursor_on_fb = false;
+    }
+
+    /* Step 2: if cursor should be visible, save pixels and draw */
+    if (!np.ta.cursor_visible) return;
+
+    textarea_t *ta = &np.ta;
+
+    /* Compute cursor line and column from buffer position */
+    int32_t cline = 0, ccol = 0;
+    for (int32_t i = 0; i < ta->cursor && i < ta->len; i++) {
+        if (ta->buf[i] == '\n') { cline++; ccol = 0; }
+        else ccol++;
+    }
+
+    /* Client-space pixel coordinates */
+    int16_t tw = ta->rect_w;
+    int16_t th = ta->rect_h;
+    if (ta->vscroll.visible) tw -= SCROLLBAR_WIDTH;
+    if (ta->hscroll.visible) th -= SCROLLBAR_WIDTH;
+
+    int16_t cx = (int16_t)(ta->rect_x + ccol * FONT_UI_WIDTH - ta->scroll_x);
+    int16_t cy = (int16_t)(ta->rect_y + cline * FONT_UI_HEIGHT - ta->scroll_y);
+
+    /* Bounds check — cursor must be fully within the text area and clip */
+    if (cx < ta->rect_x || cx >= ta->rect_x + tw ||
+        cy < ta->rect_y || cy + FONT_UI_HEIGHT > ta->rect_y + th)
+        return;
+    if (cx < 0 || cx >= np.cached_cw || cy < 0 ||
+        cy + FONT_UI_HEIGHT > np.cached_ch)
+        return;
+
+    /* Save the pixel nibble at each row, then draw black cursor */
+    for (int r = 0; r < FONT_UI_HEIGHT; r++) {
+        uint8_t *byte = fb + (cy + r) * stride + (cx >> 1);
+        if (cx & 1) {
+            np.cursor_save[r] = *byte & 0x0F;
+            *byte = (*byte & 0xF0) | (COLOR_BLACK & 0x0F);
+        } else {
+            np.cursor_save[r] = (*byte >> 4) & 0x0F;
+            *byte = (*byte & 0x0F) | (COLOR_BLACK << 4);
+        }
+    }
+    np.cursor_fb_x = cx;
+    np.cursor_fb_y = cy;
+    np.cursor_on_fb = true;
 }
 
 /*==========================================================================
@@ -891,7 +979,9 @@ static void np_paint_textarea(textarea_t *ta) {
     /* Token buffer for one line */
     uint8_t tok_buf[SYN_MAX_LINE];
 
-    /* Draw visible lines */
+    /* Draw visible lines — track the y after the last drawn line for
+     * the bottom fill that clears empty space below the text. */
+    int32_t last_drawn_bottom = ty;  /* y below the last actually drawn line */
     for (int32_t vl = 0; vl < visible_lines && offset <= ta->len; vl++) {
         int32_t line_num = first_line + vl;
         int32_t py = ty + line_num * FONT_UI_HEIGHT - ta->scroll_y;
@@ -932,6 +1022,8 @@ static void np_paint_textarea(textarea_t *ta) {
 
         /* Fill this line's background (replaces the old full-area fill) */
         wd_fill_rect(tx, py, tw, FONT_UI_HEIGHT, COLOR_WHITE);
+        if (py + FONT_UI_HEIGHT > last_drawn_bottom)
+            last_drawn_bottom = py + FONT_UI_HEIGHT;
 
         /* Find end of line */
         int32_t line_start = offset;
@@ -993,14 +1085,9 @@ static void np_paint_textarea(textarea_t *ta) {
     }
 
     /* Fill area below last drawn line (empty space in text area) */
-    {
-        int32_t last_line = ta->scroll_y / FONT_UI_HEIGHT +
-                            (th / FONT_UI_HEIGHT + 2);
-        int32_t bottom_y = ty + last_line * FONT_UI_HEIGHT - ta->scroll_y;
-        if (bottom_y < ty) bottom_y = ty;
-        if (bottom_y < ty + th)
-            wd_fill_rect(tx, bottom_y, tw, ty + th - bottom_y, COLOR_WHITE);
-    }
+    if (last_drawn_bottom < ty + th)
+        wd_fill_rect(tx, last_drawn_bottom, tw, ty + th - last_drawn_bottom,
+                     COLOR_WHITE);
 
     /* Draw cursor */
     if (ta->cursor_visible) {
@@ -1069,6 +1156,7 @@ static bool np_event(hwnd_t hwnd, const window_event_t *event) {
         /* Stop cursor blink when window loses focus */
         if (np.blink_timer) xTimerStop(np.blink_timer, 0);
         np.ta.cursor_visible = false;
+        np.cached_fb = NULL;   /* prevent blink writes while unfocused */
         wm_invalidate(np.hwnd);
         return true;
     }
@@ -1360,6 +1448,26 @@ static bool np_event(hwnd_t hwnd, const window_event_t *event) {
 
 static void np_paint(hwnd_t hwnd) {
     wd_begin(hwnd);
+
+    /* Cache framebuffer info for direct cursor blink writes.
+     * wd_fb_ptr(0,0) returns a pointer to the client area origin.
+     * Window x is always even, so client x nibble alignment = cx & 1. */
+    int16_t stride;
+    uint8_t *fb = wd_fb_ptr(0, 0, &stride);
+    if (fb) {
+        int16_t cw, ch;
+        wd_get_clip_size(&cw, &ch);
+        np.cached_fb     = fb;
+        np.cached_stride = stride;
+        np.cached_cw     = cw;
+        np.cached_ch     = ch;
+    }
+
+    /* Full repaint overwrites everything — any cursor we drew directly
+     * is now gone.  Clear the flag so the blink callback doesn't try
+     * to restore stale saved pixel data. */
+    np.cursor_on_fb = false;
+
     np_paint_textarea(&np.ta);
     wd_end();
 }

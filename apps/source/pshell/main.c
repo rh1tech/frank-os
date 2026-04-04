@@ -327,17 +327,21 @@ int main(int argc, char **argv) {
     if (g_blink_tmr)
         xTimerStart(g_blink_tmr, 0);
 
-    /* Start shell in a separate task (4K words = 16KB stack).
-     * Keep this lean — FreeRTOS heap is only 128KB and cc needs ~82KB. */
-    xTaskCreate(shell_task_fn, "pshell", 4096, NULL,
-                tskIDLE_PRIORITY + 1, &g_shell_task);
+    /* Run shell directly on the main task (shared stack) instead of
+     * creating a separate FreeRTOS task.  xTaskCreate would need to
+     * allocate the stack from the FreeRTOS SRAM heap which has very
+     * limited free space — this avoids the allocation entirely.
+     * The swap system saves/restores the shared stack to PSRAM on
+     * app switch, so suspend/resume works correctly. */
+    g_shell_task = g_main_task;
+    vt100_set_waiter(g_shell_task);
 
-    /* Main loop — block until close */
-    while (!g_closing)
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    if (g_exec_file)
+        pshell_exec(g_exec_file);
+    else
+        pshell_main();
 
-    /* Give the shell task a moment to notice g_closing */
-    vTaskDelay(pdMS_TO_TICKS(100));
+    g_shell_task = NULL;
 
     /* Tear down — use portMAX_DELAY so timer stop/delete fully complete
      * before we return (the callback is a function pointer into ELF code;
@@ -346,14 +350,6 @@ int main(int argc, char **argv) {
         xTimerStop(g_blink_tmr, portMAX_DELAY);
         xTimerDelete(g_blink_tmr, portMAX_DELAY);
         g_blink_tmr = NULL;
-    }
-
-    /* Force-delete shell task only if it hasn't already self-deleted.
-     * shell_task_fn clears g_shell_task before vTaskDelete(NULL), so if
-     * g_shell_task is NULL here the FreeRTOS TCB is already freed. */
-    if (g_shell_task) {
-        vTaskDelete(g_shell_task);
-        g_shell_task = NULL;
     }
 
     /* Free cc's persistent code/data buffer before ELF unload */

@@ -57,6 +57,9 @@ void    vt100_get_size(int *cols, int *rows);
 /* ── Cursor blink ─────────────────────────────────────────────────────── */
 void    vt100_toggle_cursor(void);
 
+/* ── Flush pending display output ────────────────────────────────────── */
+void    vt100_flush(void);
+
 /* ── Focus / active state (suppresses direct framebuffer writes) ──────── */
 void    vt100_set_active(bool active);
 

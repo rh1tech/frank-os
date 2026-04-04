@@ -721,6 +721,10 @@ void vt100_toggle_cursor(void) {
     flush_display();
 }
 
+void vt100_flush(void) {
+    flush_display();
+}
+
 void vt100_set_active(bool active) {
     vt_active = active;
     if (active) {
