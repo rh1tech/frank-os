@@ -355,7 +355,7 @@ static void on_audio(plm_t *mpeg, plm_samples_t *samples, void *user) {
     int16_t *out = G->audio_buf;
     int count = (int)samples->count;
     for (int i = 0; i < count * 2; i++) {
-        int v = (int)(samples->interleaved[i] * 19660.0f);  /* 60% volume */
+        int v = (int)(samples->interleaved[i] * 8192.0f);  /* 25% — matches Dendy's >>2 */
         if (v >  32767) v =  32767;
         if (v < -32767) v = -32767;
         out[i] = (int16_t)v;
