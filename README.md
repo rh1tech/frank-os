@@ -122,13 +122,13 @@ Text editor with menu bar, clipboard, find/replace, and syntax highlighting. Sup
 Simple calculator application with standard arithmetic operations. Button-driven interface styled after the classic Windows calculator.
 
 ### Paintbrush
-MS Paint-style bitmap drawing application. Features 16 tools in a 2x8 toolbar grid including pencil, brush, eraser, fill, line, rectangle, ellipse, and selection tools. Supports cut/copy/paste, undo, image flip and invert operations, and BMP file loading and saving. Sub-options panel for tool variants (line width, shape fill mode). File/Edit/Image/Help menu bar.
+MS Paint-style bitmap drawing application. Has 16 tools in a 2x8 toolbar grid: pencil, brush, eraser, fill, line, rectangle, ellipse, and selection tools. Cut/copy/paste, undo, image flip and invert, BMP file loading and saving. Sub-options panel for tool variants (line width, shape fill mode). File/Edit/Image/Help menu bar.
 
 ### Solitaire
 Classic Klondike card game with Draw One and Draw Three modes. 45x60 pixel cards with suit symbols rendered as bitmap art. Proper cascading tableau, stock/waste pile, and four foundation piles.
 
 ### Minesweeper
-Grid-based mine sweeper with three difficulty levels: Beginner (9x9, 10 mines), Intermediate (16x16, 40 mines), and Expert (30x16, 99 mines). Features a 7-segment timer, mine counter, and the classic smiley reset button.
+Grid-based mine sweeper with three difficulty levels: Beginner (9x9, 10 mines), Intermediate (16x16, 40 mines), and Expert (30x16, 99 mines). Has a 7-segment timer, mine counter, and the smiley reset button.
 
 ### Digger
 Port of the 1983 Windmill Software arcade game. Dig through levels collecting gold while avoiding monsters. Sprite-based rendering with level progression and score tracking.
