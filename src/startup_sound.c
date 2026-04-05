@@ -111,5 +111,7 @@ static void startup_sound_task(void *params) {
 }
 
 void startup_sound_start(void) {
-    xTaskCreate(startup_sound_task, "startsnd", 1024, NULL, 1, NULL);
+    /* Priority 3: above compositor (2) so boot-time SD I/O and window
+     * init don't starve the audio ring buffer, causing dropouts. */
+    xTaskCreate(startup_sound_task, "startsnd", 1024, NULL, 3, NULL);
 }

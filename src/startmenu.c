@@ -28,6 +28,7 @@
 #include "run_dialog.h"
 #include "control_panel.h"
 #include "hardware/watchdog.h"
+#include "FreeRTOS.h"
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
@@ -242,6 +243,55 @@ static bool   set_open = false;
 static int8_t set_hover = -1;
 static int16_t set_x, set_y, set_w, set_h;
 
+/* Save-under: saves framebuffer pixels under popup submenus so they
+ * can be restored instantly when the submenu closes or moves — no
+ * window repainting, no full-screen clear, no flicker.
+ * Only one submenu is open at a time; context popup has its own buf.
+ * Buffers are heap-allocated when the menu opens to avoid bloating BSS. */
+static uint8_t *sm_su_buf = NULL;
+static int      sm_su_cap = 0;        /* allocated capacity in bytes */
+static int16_t  sm_su_x, sm_su_y, sm_su_w, sm_su_h;
+static bool     sm_su_valid = false;
+/* Which submenu the save-under belongs to (0=none, 1=prog, 2=fw, 3=set) */
+static uint8_t  sm_su_which = 0;
+
+static uint8_t *sm_ctx_su_buf = NULL;
+static int      sm_ctx_su_cap = 0;
+static int16_t  sm_ctx_su_x, sm_ctx_su_y, sm_ctx_su_w, sm_ctx_su_h;
+static bool     sm_ctx_su_valid = false;
+
+/* Ensure a heap buffer has enough room; (re)alloc if needed. */
+static bool su_ensure(uint8_t **buf, int *cap, int need) {
+    if (*cap >= need) return true;
+    if (*buf) vPortFree(*buf);
+    *buf = (uint8_t *)pvPortMalloc(need);
+    *cap = *buf ? need : 0;
+    return *buf != NULL;
+}
+
+static bool fb_save(uint8_t **buf, int *cap,
+                    int16_t x, int16_t y, int16_t w, int16_t h) {
+    int bx = x >> 1;
+    int bw = (w + 1) >> 1;
+    int need = bw * h;
+    if (!su_ensure(buf, cap, need)) return false;
+    uint8_t *fb = display_draw_buffer_ptr;
+    uint8_t *dst = *buf;
+    for (int r = 0; r < h; r++)
+        memcpy(dst + r * bw, fb + (y + r) * FB_STRIDE + bx, bw);
+    return true;
+}
+
+static void fb_restore(const uint8_t *src,
+                       int16_t x, int16_t y, int16_t w, int16_t h) {
+    if (!src) return;
+    int bx = x >> 1;
+    int bw = (w + 1) >> 1;
+    uint8_t *fb = display_draw_buffer_ptr;
+    for (int r = 0; r < h; r++)
+        memcpy(fb + (y + r) * FB_STRIDE + bx, src + r * bw, bw);
+}
+
 /* Pending action state — deferred until dialog is dismissed */
 enum { PENDING_NONE, PENDING_REBOOT, PENDING_FIRMWARE };
 static uint8_t pending_action = PENDING_NONE;
@@ -350,6 +400,12 @@ void startmenu_close(void) {
     set_hover = -1;
     sm_ctx_hover = -1;
     sm_ctx_app_idx = -1;
+    /* Free save-under buffers — full repaint restores everything */
+    sm_su_valid = false;
+    sm_su_which = 0;
+    sm_ctx_su_valid = false;
+    if (sm_su_buf)     { vPortFree(sm_su_buf);     sm_su_buf = NULL;     sm_su_cap = 0; }
+    if (sm_ctx_su_buf) { vPortFree(sm_ctx_su_buf); sm_ctx_su_buf = NULL; sm_ctx_su_cap = 0; }
     /* Force full repaint to guarantee stale menu pixels are cleared,
      * even if the popup-close transition detector misses the change. */
     wm_force_full_repaint();
@@ -578,6 +634,58 @@ static void draw_sidebar_logo(int sx, int sy, int bar_w, int bar_h) {
 
 void startmenu_draw(void) {
     if (!sm_open) return;
+
+    /* --- Save-under management for submenus ---
+     * Track which submenu is open by identity (not just rect) so that
+     * overlapping rects between different submenus are always handled.
+     * Restore old → save new → draw.  On steady-state frames (same
+     * submenu, same rect) the save/restore is skipped for speed. */
+    {
+        uint8_t cur_which = sub_open ? 1 : fw_open ? 2 : set_open ? 3 : 0;
+        int16_t cx = 0, cy = 0, cw = 0, ch = 0;
+        if (cur_which == 1) { cx = sub_x; cy = sub_y; cw = sub_w; ch = sub_h; }
+        if (cur_which == 2) { cx = fw_x;  cy = fw_y;  cw = fw_w;  ch = fw_h;  }
+        if (cur_which == 3) { cx = set_x; cy = set_y; cw = set_w; ch = set_h; }
+
+        bool changed = (cur_which != sm_su_which) ||
+                       (sm_su_valid && (cx != sm_su_x || cy != sm_su_y ||
+                                        cw != sm_su_w || ch != sm_su_h));
+        if (changed) {
+            /* Restore old submenu area */
+            if (sm_su_valid)
+                fb_restore(sm_su_buf, sm_su_x, sm_su_y, sm_su_w, sm_su_h);
+            sm_su_valid = false;
+            sm_su_which = cur_which;
+            /* Save new submenu area (framebuffer is now clean) */
+            if (cw > 0 && ch > 0) {
+                if (fb_save(&sm_su_buf, &sm_su_cap, cx, cy, cw, ch)) {
+                    sm_su_x = cx; sm_su_y = cy;
+                    sm_su_w = cw; sm_su_h = ch;
+                    sm_su_valid = true;
+                } else {
+                    /* Heap full — fall back to full repaint on next
+                     * submenu change so stale pixels get cleaned up. */
+                    sm_su_which = 0;
+                    wm_force_full_repaint();
+                }
+            }
+        }
+    }
+
+    /* --- Save-under for context popup --- */
+    if (sm_ctx_open && !sm_ctx_su_valid) {
+        if (fb_save(&sm_ctx_su_buf, &sm_ctx_su_cap,
+                    sm_ctx_x, sm_ctx_y, sm_ctx_w, sm_ctx_h)) {
+            sm_ctx_su_x = sm_ctx_x; sm_ctx_su_y = sm_ctx_y;
+            sm_ctx_su_w = sm_ctx_w; sm_ctx_su_h = sm_ctx_h;
+            sm_ctx_su_valid = true;
+        }
+    }
+    if (!sm_ctx_open && sm_ctx_su_valid) {
+        fb_restore(sm_ctx_su_buf,
+                   sm_ctx_su_x, sm_ctx_su_y, sm_ctx_su_w, sm_ctx_su_h);
+        sm_ctx_su_valid = false;
+    }
 
     /* Menu background */
     gfx_fill_rect(sm_x, sm_y, sm_w, sm_h, THEME_BUTTON_FACE);
@@ -811,7 +919,7 @@ bool startmenu_mouse(uint8_t type, int16_t x, int16_t y) {
                 sm_ctx_open = false;
                 sm_ctx_hover = -1;
                 sm_ctx_app_idx = -1;
-                wm_force_full_repaint();
+                wm_mark_dirty();
             }
             return true;
         }
@@ -828,7 +936,7 @@ bool startmenu_mouse(uint8_t type, int16_t x, int16_t y) {
         sm_ctx_open = false;
         sm_ctx_hover = -1;
         sm_ctx_app_idx = -1;
-        wm_force_full_repaint();
+        wm_mark_dirty();
         /* Fall through so the event is handled by menu areas below */
     }
 
@@ -891,9 +999,8 @@ bool startmenu_mouse(uint8_t type, int16_t x, int16_t y) {
             }
             if (new_hover != sm_hover) {
                 sm_hover = new_hover;
-                /* Close all submenus, then open the relevant one.
-                 * Use full repaint to clear stale submenu pixels. */
-                bool had_sub = sub_open || fw_open || set_open;
+                /* Save stale submenu rects before closing — erased
+                 * by startmenu_draw() to avoid full-screen flash. */
                 sub_open = false;
                 sub_hover = -1;
                 fw_open = false;
@@ -910,10 +1017,7 @@ bool startmenu_mouse(uint8_t type, int16_t x, int16_t y) {
                     set_open = true;
                     compute_set_rect();
                 }
-                if (had_sub)
-                    wm_force_full_repaint();
-                else
-                    wm_mark_dirty();
+                wm_mark_dirty();
             }
         }
         if (type == WM_LBUTTONUP && sm_hover >= 0) {
@@ -954,7 +1058,7 @@ bool startmenu_handle_key(uint8_t hid_code, uint8_t modifiers) {
         case 0x50: /* LEFT — close submenu */
             set_open = false;
             set_hover = -1;
-            wm_force_full_repaint();
+            wm_mark_dirty();
             return true;
         case 0x28: /* ENTER */
             if (set_hover >= 0) {
@@ -965,7 +1069,7 @@ bool startmenu_handle_key(uint8_t hid_code, uint8_t modifiers) {
         case 0x29: /* ESC */
             set_open = false;
             set_hover = -1;
-            wm_force_full_repaint();
+            wm_mark_dirty();
             return true;
         }
         return true;
@@ -991,7 +1095,7 @@ bool startmenu_handle_key(uint8_t hid_code, uint8_t modifiers) {
         case 0x50: /* LEFT — close submenu */
             fw_open = false;
             fw_hover = -1;
-            wm_force_full_repaint();
+            wm_mark_dirty();
             return true;
         case 0x28: /* ENTER */
             if (fw_hover >= 0) execute_fw_item(fw_hover);
@@ -999,7 +1103,7 @@ bool startmenu_handle_key(uint8_t hid_code, uint8_t modifiers) {
         case 0x29: /* ESC */
             fw_open = false;
             fw_hover = -1;
-            wm_force_full_repaint();
+            wm_mark_dirty();
             return true;
         }
         return true;
@@ -1022,7 +1126,7 @@ bool startmenu_handle_key(uint8_t hid_code, uint8_t modifiers) {
         case 0x50: /* LEFT — close submenu */
             sub_open = false;
             sub_hover = -1;
-            wm_force_full_repaint();
+            wm_mark_dirty();
             return true;
         case 0x28: /* ENTER */
             if (sub_hover >= 0) execute_sub_item(sub_hover);
@@ -1030,7 +1134,7 @@ bool startmenu_handle_key(uint8_t hid_code, uint8_t modifiers) {
         case 0x29: /* ESC */
             sub_open = false;
             sub_hover = -1;
-            wm_force_full_repaint();
+            wm_mark_dirty();
             return true;
         }
         return true;
@@ -1041,20 +1145,18 @@ bool startmenu_handle_key(uint8_t hid_code, uint8_t modifiers) {
     case 0x52: /* UP */
         sm_hover--;
         if (sm_hover < 0) sm_hover = SM_ITEM_COUNT - 1;
-        if (sub_open || fw_open || set_open) wm_force_full_repaint();
-        else wm_mark_dirty();
         sub_open = false;
         fw_open = false;
         set_open = false;
+        wm_mark_dirty();
         return true;
     case 0x51: /* DOWN */
         sm_hover++;
         if (sm_hover >= (int)SM_ITEM_COUNT) sm_hover = 0;
-        if (sub_open || fw_open || set_open) wm_force_full_repaint();
-        else wm_mark_dirty();
         sub_open = false;
         fw_open = false;
         set_open = false;
+        wm_mark_dirty();
         return true;
     case 0x4F: /* RIGHT — open submenu if applicable */
         if (sm_hover >= 0 && sm_items[sm_hover].has_submenu) {
