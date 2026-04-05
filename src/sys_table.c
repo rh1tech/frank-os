@@ -48,6 +48,7 @@
 #include "midi_opl.h"
 #include "display.h"
 #include "clipboard.h"
+#include <hardware/watchdog.h>
 #include "controls.h"
 #include "find_dialog.h"
 #include "file_assoc.h"
@@ -96,6 +97,13 @@ static void safe_qsort(void *base, size_t nmemb, size_t size,
         return;
     }
     qsort(base, nmemb, size, compar);
+}
+
+/* Reboot into over-mode firmware (sets SRAM magic, then watchdog reset) */
+static void system_reboot_to_firmware(void) {
+    *(volatile uint32_t *)(0x20000000 + (512 << 10) - 8) = 0x383da910u;
+    watchdog_reboot(0, 0, 0);
+    while (1) ;
 }
 
 unsigned long __in_systable() __aligned(4096) sys_table_ptrs[] = {
@@ -715,6 +723,9 @@ unsigned long __in_systable() __aligned(4096) sys_table_ptrs[] = {
     wm_force_full_repaint,    // 533
     snd_set_volume,           // 534
     snd_get_volume,           // 535
+    // API v.39 — System reboot
+    watchdog_reboot,          // 536
+    system_reboot_to_firmware,// 537
     // TODO:
     0
 };

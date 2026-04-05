@@ -61,14 +61,15 @@ typedef struct {
     uint8_t     id;
     bool        separator;  /* draw separator line above this item */
     bool        has_submenu;
+    bool        hidden;     /* skip in rendering and input */
 } sm_item_t;
 
 static const sm_item_t sm_items[] = {
-    { "Programs",  0,               false, true  },
-    { "Settings",  SM_ID_SETTINGS,  false, true  },
-    { "Firmware",  SM_ID_FIRMWARE,  true,  true  },
-    { "Run...",    SM_ID_RUN,       true,  false },
-    { "Reboot",    SM_ID_REBOOT,    true,  false },
+    { "Programs",  0,               false, true,  false },
+    { "Settings",  SM_ID_SETTINGS,  false, true,  false },
+    { "Firmware",  SM_ID_FIRMWARE,  true,  true,  true  },
+    { "Run...",    SM_ID_RUN,       true,  false, false },
+    { "Reboot",    SM_ID_REBOOT,    true,  false, false },
 };
 #define SM_ITEM_COUNT  (sizeof(sm_items) / sizeof(sm_items[0]))
 #define SM_IDX_PROGRAMS  0
@@ -306,6 +307,7 @@ static void compute_menu_rect(void) {
     sm_w = SM_MENU_WIDTH;
     sm_h = 4; /* borders */
     for (int i = 0; i < (int)SM_ITEM_COUNT; i++) {
+        if (sm_items[i].hidden) continue;
         if (sm_items[i].separator) sm_h += SM_SEPARATOR_H;
         sm_h += SM_ITEM_HEIGHT;
     }
@@ -703,6 +705,7 @@ void startmenu_draw(void) {
     /* Draw items */
     int iy = sm_y + 2;
     for (int i = 0; i < (int)SM_ITEM_COUNT; i++) {
+        if (sm_items[i].hidden) continue;
         if (sm_items[i].separator) {
             int sep_y = iy + SM_SEPARATOR_H / 2;
             gfx_hline(sm_x + SM_PAD_LEFT - 2, sep_y - 1,
@@ -990,6 +993,7 @@ bool startmenu_mouse(uint8_t type, int16_t x, int16_t y) {
             int iy = sm_y + 2;
             int new_hover = -1;
             for (int i = 0; i < (int)SM_ITEM_COUNT; i++) {
+                if (sm_items[i].hidden) continue;
                 if (sm_items[i].separator) iy += SM_SEPARATOR_H;
                 if (y >= iy && y < iy + SM_ITEM_HEIGHT) {
                     new_hover = i;
@@ -1143,16 +1147,16 @@ bool startmenu_handle_key(uint8_t hid_code, uint8_t modifiers) {
     /* Main menu keyboard handling */
     switch (hid_code) {
     case 0x52: /* UP */
-        sm_hover--;
-        if (sm_hover < 0) sm_hover = SM_ITEM_COUNT - 1;
+        do { sm_hover--; if (sm_hover < 0) sm_hover = SM_ITEM_COUNT - 1; }
+        while (sm_items[sm_hover].hidden);
         sub_open = false;
         fw_open = false;
         set_open = false;
         wm_mark_dirty();
         return true;
     case 0x51: /* DOWN */
-        sm_hover++;
-        if (sm_hover >= (int)SM_ITEM_COUNT) sm_hover = 0;
+        do { sm_hover++; if (sm_hover >= (int)SM_ITEM_COUNT) sm_hover = 0; }
+        while (sm_items[sm_hover].hidden);
         sub_open = false;
         fw_open = false;
         set_open = false;

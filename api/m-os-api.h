@@ -451,6 +451,14 @@ inline static void run_app(char * name) {
     typedef void (*fn_ptr_t)(char*);
     ((fn_ptr_t)_sys_table_ptrs[66])(name);
 }
+inline static void system_reboot(void) {
+    typedef void (*fn_ptr_t)(uint32_t, uint32_t, uint32_t);
+    ((fn_ptr_t)_sys_table_ptrs[536])(0, 0, 0);
+}
+inline static void system_reboot_to_firmware(void) {
+    typedef void (*fn_ptr_t)(void);
+    ((fn_ptr_t)_sys_table_ptrs[537])();
+}
 
 inline static bool is_new_app(cmd_ctx_t* c) {
     typedef bool (*fn_ptr_t)(cmd_ctx_t* c);
