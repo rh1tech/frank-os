@@ -252,6 +252,9 @@ void wm_destroy_window(hwnd_t hwnd) {
     if (!valid_hwnd(hwnd)) return;
     window_t *win = &windows[hwnd - 1];
 
+    /* Clear all stale references (drag, modal, titlebar capture, etc.) */
+    wm_event_clear_refs(hwnd);
+
     /* Expose the area this window occupied */
     wm_add_expose_rect(&win->frame);
 

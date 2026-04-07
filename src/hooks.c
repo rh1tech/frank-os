@@ -136,11 +136,11 @@ void vApplicationIdleHook( void )
 
     /* Drain deferred PSRAM cleanup queue (static task stacks/TCBs) */
     for (int i = 0; i < TASK_MEM_CLEANUP_SLOTS; i++) {
+        taskENTER_CRITICAL();
         void* p = task_mem_cleanup[i];
-        if (p) {
-            task_mem_cleanup[i] = NULL;
-            psram_free(p);
-        }
+        if (p) task_mem_cleanup[i] = NULL;
+        taskEXIT_CRITICAL();
+        if (p) psram_free(p);
     }
 }
 /*-----------------------------------------------------------*/

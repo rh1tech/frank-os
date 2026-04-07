@@ -326,4 +326,9 @@ void wm_clear_modal(void);
 /* Get the current modal window (HWND_NULL if none) */
 hwnd_t wm_get_modal(void);
 
+/* Clear all internal references to a window handle (drag, modal,
+ * titlebar capture, keyboard move, double-click tracking).
+ * Called by wm_destroy_window() to prevent stale handle issues. */
+void wm_event_clear_refs(hwnd_t hwnd);
+
 #endif /* WINDOW_EVENT_H */

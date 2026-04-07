@@ -494,11 +494,12 @@ static hwnd_t calc_create(void) {
     /* Copy const data to RAM (paint/event handlers in .text may not
      * see .rodata correctly due to ELF loader relocation issues) */
     memcpy(c->labels, labels_src, sizeof(c->labels));
-    strcpy(c->about_title, "About Calculator");
-    strcpy(c->about_text, "Calculator\n\nFRANK OS v" FRANK_VERSION_STR
-                           "\n(c) 2026 Mikhail Matveev\n"
-                           "<xtreme@rh1.tech>\n"
-                           "github.com/rh1tech/frank-os");
+    snprintf(c->about_title, sizeof(c->about_title), "About Calculator");
+    snprintf(c->about_text, sizeof(c->about_text),
+             "Calculator\n\nFRANK OS v" FRANK_VERSION_STR
+             "\n(c) 2026 Mikhail Matveev\n"
+             "<xtreme@rh1.tech>\n"
+             "github.com/rh1tech/frank-os");
 
     c->pressed_row = -1;
     c->pressed_col = -1;

@@ -506,7 +506,7 @@ typedef struct {
 static sys_applet_t sys_app;
 
 #define SYS_W  260
-#define SYS_H  210
+#define SYS_H  270
 
 static bool sys_event(hwnd_t hwnd, const window_event_t *ev) {
     sys_applet_t *s = &sys_app;
@@ -555,8 +555,16 @@ static void sys_paint(hwnd_t hwnd) {
     int y = 12;
     int x = 16;
 
-    wd_text_ui(x, y, "FRANK OS", COLOR_BLACK, THEME_BUTTON_FACE);
-    y += FONT_UI_HEIGHT + 8;
+    wd_text_ui(x, y, "FRANK OS v" FRANK_VERSION_STR, COLOR_BLACK, THEME_BUTTON_FACE);
+    y += FONT_UI_HEIGHT + 2;
+    wd_text_ui(x, y, "(c) 2026 Mikhail Matveev", COLOR_DARK_GRAY, THEME_BUTTON_FACE);
+    y += FONT_UI_HEIGHT + 2;
+    wd_text_ui(x, y, "github.com/rh1tech/frank-os", COLOR_DARK_GRAY, THEME_BUTTON_FACE);
+    y += FONT_UI_HEIGHT + 10;
+
+    /* Separator line */
+    wd_hline(x, y, client_w - x * 2, COLOR_DARK_GRAY);
+    y += 8;
 
     uint32_t cpu_mhz = clock_get_hz(clk_sys) / 1000000;
     snprintf(buf, sizeof(buf), "CPU: %lu MHz", (unsigned long)cpu_mhz);

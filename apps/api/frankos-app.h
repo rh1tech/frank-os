@@ -154,7 +154,12 @@ typedef struct window_event {
  * ======================================================================== */
 
 typedef struct window window_t;
+/* Event handler callback. Return true if the event was consumed (handled),
+ * false to indicate the event was not handled (reserved for future default
+ * processing). The handler is called from the compositor task context. */
 typedef bool (*event_handler_t)(hwnd_t hwnd, const window_event_t *event);
+/* Paint handler callback. Called when the window needs repainting.
+ * Use wd_begin()/wd_end() to bracket drawing operations. */
 typedef void (*paint_handler_t)(hwnd_t hwnd);
 
 /* ========================================================================

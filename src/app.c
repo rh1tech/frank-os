@@ -453,6 +453,7 @@ typedef struct {
     int symtab_off;
     elf32_sym* psym;
     char* pstrtab;
+    uint32_t   strtab_len;  /* size of pstrtab buffer for bounds checks */
     list_t* /*sect_entry_t*/ sections_lst;
     elf32_sym* symtab_arr;  /* entire .symtab cached in RAM (PSRAM) */
     uint32_t   symtab_cnt;  /* number of entries in symtab_arr       */
@@ -472,7 +473,7 @@ static char* __in_hfa() sec_prg_addr(const load_sec_ctx* ctx, int sec_num) {
 
 static void __in_hfa() add_sec(load_sec_ctx* ctx, char* del_addr, char* prg_addr, int num) {
     sect_entry_t* se = (sect_entry_t*)pvPortMalloc(sizeof(sect_entry_t));
-    if (!se) return; // TODO: message with fault
+    if (!se) { goutf("add_sec: out of memory for section #%d\n", num); return; }
     // goutf("sec: [%p]\n", se);
     se->del_addr = del_addr;
     se->prg_addr = prg_addr;
@@ -508,6 +509,7 @@ inline static uint8_t* __in_hfa() sec_align(uint32_t sz, uint8_t* *pdel_addr, ui
     }
     else if ((uint32_t)res & (a - 1)) {
         psram_free(res);
+        if (sz > SIZE_MAX - (a - 1)) { *pdel_addr = NULL; *real_addr = NULL; return NULL; }
         res = alloc_zeroed(sz + (a - 1), executable);
         *pdel_addr = res;
         if ((uint32_t)res & (a - 1)) {
@@ -709,8 +711,7 @@ static uint8_t* __in_hfa() load_sec2mem(load_sec_ctx * c, uint16_t sec_num, bool
         goutf("Program section #%d (%d bytes) allocated into %ph\n", sec_num, psh->sh_size, prg_addr);
         #endif
         add_sec(c, del_addr, prg_addr, sec_num);
-        // c->total_sections_loaded++;
-        // c->total_memory_allocated += psh->sh_size;
+        uint32_t target_sec_size = psh->sh_size; /* save before psh is reused */
         // links and relocations
         if (f_lseek(c->f2, c->pehdr->sh_offset) != FR_OK) {
             goutf("Unable to locate sections @ %ph\n", c->pehdr->sh_offset);
@@ -762,11 +763,21 @@ static uint8_t* __in_hfa() load_sec2mem(load_sec_ctx * c, uint16_t sec_num, bool
                             goto e1;
                         }
                     }
+                    if (c->psym->st_name >= c->strtab_len) {
+                        goutf("WARN: symbol name offset %u out of strtab bounds (%u)\n", c->psym->st_name, c->strtab_len);
+                        if (rel_buf) vPortFree(rel_buf);
+                        goto e1;
+                    }
                     char* rel_str_sym = st_spec_sec(c->psym->st_shndx);
                     if (rel_str_sym != 0) {
                         char* fn_name = c->pstrtab + c->psym->st_name;
                         goutf("Unsupported link from STRTAB record #%d to section #%d (%s): %s\n",
                                 rel_sym, c->psym->st_shndx, rel_str_sym, fn_name);
+                        if (rel_buf) vPortFree(rel_buf);
+                        goto e1;
+                    }
+                    if (rel.rel_offset + sizeof(uint32_t) > target_sec_size) {
+                        goutf("WARN: relocation offset %u out of section bounds (%u)\n", rel.rel_offset, target_sec_size);
                         if (rel_buf) vPortFree(rel_buf);
                         goto e1;
                     }
@@ -962,9 +973,26 @@ a1:
         goto a;
     }
     UINT rb;
-    if (f_read(f, pehdr, sizeof(elf32_header), &rb) != FR_OK) {
+    if (f_read(f, pehdr, sizeof(elf32_header), &rb) != FR_OK || rb != sizeof(elf32_header)) {
         goutf("Unable to read an ELF file header: '%s'\n", fn);
-        goto e1;
+        goto a2;
+    }
+    /* Validate ELF header: magic, 32-bit class, little-endian, ARM machine */
+    if (pehdr->common.magic != ELF_MAGIC) {
+        goutf("Not an ELF file: '%s' (magic: %08X)\n", fn, pehdr->common.magic);
+        goto a2;
+    }
+    if (pehdr->common.arch_class != 1 || pehdr->common.endianness != 1 ||
+        pehdr->common.machine != EM_ARM) {
+        goutf("Unsupported ELF format: '%s' (class=%d endian=%d machine=0x%X)\n",
+              fn, pehdr->common.arch_class, pehdr->common.endianness, pehdr->common.machine);
+        goto a2;
+    }
+    /* Sanity-check section count to prevent OOM from malformed headers */
+    if (pehdr->sh_num > 512 || pehdr->sh_str_index >= pehdr->sh_num) {
+        goutf("Invalid ELF header: '%s' (sh_num=%u sh_stridx=%u)\n",
+              fn, (unsigned)pehdr->sh_num, (unsigned)pehdr->sh_str_index);
+        goto a2;
     }
     printf("[load_app] ELF hdr ok, sh_off=%u sh_num=%u sh_stridx=%u\n",
            (unsigned)pehdr->sh_offset, (unsigned)pehdr->sh_num, (unsigned)pehdr->sh_str_index);
@@ -977,7 +1005,7 @@ a2:
     bool ok = f_lseek(f, pehdr->sh_offset + sizeof(elf32_shdr) * pehdr->sh_str_index) == FR_OK;
     if (!ok || f_read(f, psh, sizeof(elf32_shdr), &rb) != FR_OK || rb != sizeof(elf32_shdr)) {
         goutf("Unable to read .shstrtab section header @ %d+%d (read: %d)\n", f_tell(f), sizeof(elf32_shdr), rb);
-        goto e11;
+        goto a3;
     }
     char* symtab = (char*)pvPortMalloc(psh->sh_size);
     if (!symtab) {
@@ -988,7 +1016,7 @@ a3:
     ok = f_lseek(f, psh->sh_offset) == FR_OK;
     if (!ok || f_read(f, symtab, psh->sh_size, &rb) != FR_OK || rb != psh->sh_size) {
         goutf("Unable to read .shstrtab section @ %d+%d (read: %d)\n", f_tell(f), psh->sh_size, rb);
-        goto e2;
+        goto a4;
     }
     f_lseek(f, pehdr->sh_offset);
     int symtab_off = -1;
@@ -1006,7 +1034,7 @@ a3:
     }
     if (symtab_off < 0 || strtab_off < 0) {
         goutf("Unable to find .strtab/.symtab sections\n");
-        goto e2;
+        goto a4;
     }
     f_lseek(f, strtab_off);
     /* Allocate .strtab in PSRAM to keep SRAM free for code sections.
@@ -1023,7 +1051,8 @@ a4:
     }
     if (f_read(f, strtab, strtab_len, &rb) != FR_OK || rb != strtab_len) {
         goutf("Unable to read .strtab section\n");
-        goto e3;
+        psram_free(strtab);
+        goto a4;
     }
     f_lseek(f, symtab_off);
 
@@ -1077,6 +1106,7 @@ a6:
     pctx->symtab_off = symtab_off;
     pctx->psym = psym;
     pctx->pstrtab = strtab;
+    pctx->strtab_len = strtab_len;
     pctx->symtab_arr = symtab_cache;
     pctx->symtab_cnt = symtab_cnt;
     pctx->sections_lst = new_list_v(0, sect_entry_deallocator, 0);
@@ -1094,6 +1124,7 @@ a6:
             }
             ps = psym;
         }
+        if (ps->st_name >= strtab_len) continue;
         if (ps->st_info == STR_TAB_GLOBAL_FUNC) {
             char* gfn = strtab + ps->st_name;
             if (0 == strcmp("_init", gfn)) {
@@ -1345,12 +1376,15 @@ void __in_hfa() exec_sync(cmd_ctx_t* ctx) {
 void* volatile task_mem_cleanup[TASK_MEM_CLEANUP_SLOTS];
 
 void task_mem_defer_free(void* ptr) {
+    taskENTER_CRITICAL();
     for (int i = 0; i < TASK_MEM_CLEANUP_SLOTS; i++) {
         if (!task_mem_cleanup[i]) {
             task_mem_cleanup[i] = ptr;
+            taskEXIT_CRITICAL();
             return;
         }
     }
+    taskEXIT_CRITICAL();
 }
 
 

@@ -85,11 +85,8 @@ void WriteINIString(const char *section,const char *key,const char *value,const 
   buffer[tl]=0;
   fclose(fp);
   fp = NULL;
-  strcpy(s2,"[");
-  strcat(s2,section);
-  strcat(s2,"]");
-  strcpy(s3,key);
-  strcat(s3,"=");
+  snprintf(s2, sizeof(s2), "[%s]", section);
+  snprintf(s3, sizeof(s3), "%s=", key);
   p=buffer;
   do {
     p=sgets(p,s1);
@@ -151,15 +148,12 @@ void GetINIString(const char *section,const char*key,const char*def,char*dest,
    * figure out what is really attempted here
    */
   if (dest != def)
-    strcpy(dest,def);
+    strncpy(dest, def, destsize);
   fp=fopen(filename,"rb");
   if (fp==NULL)
     return;
-  strcpy(s2,"[");
-  strcat(s2,section);
-  strcat(s2,"]");
-  strcpy(s3,key);
-  strcat(s3,"=");
+  snprintf(s2, sizeof(s2), "[%s]", section);
+  snprintf(s3, sizeof(s3), "%s=", key);
   do {
     if (fgets(s1, 80, fp) == NULL) {
       fprintf(stderr, "GetINIString: read failed: %s\n", filename);
@@ -174,7 +168,8 @@ void GetINIString(const char *section,const char*key,const char*def,char*dest,
         }
         sgets(s1,s1);
         if (strnicmp(s1,s3,strlen(s3))==0) {
-          strcpy(dest,s1+strlen(s3));
+          strncpy(dest, s1+strlen(s3), destsize);
+          dest[destsize - 1] = '\0';
           goto out_0;
         }
       } while (s1[0]!=0 && !feof(fp) && !ferror(fp));
@@ -187,7 +182,7 @@ out_0:
 int32_t GetINIInt(const char *section,const char*key,int32_t def,const char*filename)
 {
   char buf[80];
-  sprintf(buf,"%i",def);
+  snprintf(buf, sizeof(buf), "%i", def);
   GetINIString(section,key,buf,buf,80,filename);
   return atol(buf);
 }
@@ -196,14 +191,14 @@ void WriteINIIntconst (char *section,const char*key,int32_t value,
                             char *filename)
 {
   char buf[80];
-  sprintf(buf,"%i",value);
+  snprintf(buf, sizeof(buf), "%i", value);
   WriteINIString(section,key,buf,filename);
 }
 
 bool GetINIBool(const char *section,const char*key,bool def,const char*filename)
 {
   char buf[80];
-  sprintf(buf,"%i",def);
+  snprintf(buf, sizeof(buf), "%i", def);
   GetINIString(section,key,buf,buf,80,filename);
   strupr(buf);
   if (buf[0]=='T')

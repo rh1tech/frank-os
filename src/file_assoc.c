@@ -220,6 +220,22 @@ void file_assoc_scan(void) {
     f_closedir(&dir);
 }
 
+/* Extensions recognized as plain text — opened with notepad as fallback
+ * when no explicit association is registered. */
+static bool is_text_ext(const char *ext) {
+    static const char *text_exts[] = {
+        "xml", "json", "yaml", "yml", "toml", "html", "htm", "css",
+        "js", "ts", "java", "rs", "go", "rb", "pl", "lua", "sql",
+        "bat", "env", "conf", "cmake", "mk", "asm", "s", "inc",
+        "gitignore", "properties", "rc", "def", "map", "ld", "gdb",
+        NULL
+    };
+    for (const char **p = text_exts; *p; p++) {
+        if (strcasecmp_short(ext, *p) == 0) return true;
+    }
+    return false;
+}
+
 /*==========================================================================
  * Query API
  *=========================================================================*/
@@ -229,6 +245,13 @@ const fa_app_t *file_assoc_find(const char *ext) {
     for (int i = 0; i < fa_app_count; i++) {
         for (int j = 0; j < fa_apps[i].ext_count; j++) {
             if (strcasecmp_short(ext, fa_apps[i].exts[j]) == 0)
+                return &fa_apps[i];
+        }
+    }
+    /* Fallback: known text/code/config extensions → notepad */
+    if (is_text_ext(ext)) {
+        for (int i = 0; i < fa_app_count; i++) {
+            if (strcmp(fa_apps[i].path, "/fos/notepad") == 0)
                 return &fa_apps[i];
         }
     }

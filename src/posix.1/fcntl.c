@@ -150,23 +150,26 @@ static FRESULT __in_hfa() extfs_flush() {
     if (r != FR_OK) goto ex;
     for (uint32_t i = 0; i < posix_links_cnt; ++i, ++lnk) {
         UINT bw;
-        f_write(pf, &lnk->type, 1, &bw);
+        r = f_write(pf, &lnk->type, 1, &bw);
+        if (r != FR_OK) goto ex;
         r = f_write(pf, &lnk->hash, sizeof(lnk->hash), &bw);
-        if (r != FR_OK) { /// TODO: error handling
-            r = FR_DISK_ERR;
-            goto ex;
-        }
+        if (r != FR_OK) goto ex;
         uint16_t sz = (uint16_t)strlen(lnk->fname);
-        f_write(pf, &sz, sizeof(sz), &bw);
-        f_write(pf, lnk->fname, sz, &bw);
+        r = f_write(pf, &sz, sizeof(sz), &bw);
+        if (r != FR_OK) goto ex;
+        r = f_write(pf, lnk->fname, sz, &bw);
+        if (r != FR_OK) goto ex;
         if (lnk->type == 'H') {
-            f_write(pf, &lnk->hlink.ohash, sizeof(lnk->hlink.ohash), &bw);
+            r = f_write(pf, &lnk->hlink.ohash, sizeof(lnk->hlink.ohash), &bw);
+            if (r != FR_OK) goto ex;
             sz = (uint16_t)strlen(lnk->hlink.ofname);
-            f_write(pf, &sz, sizeof(sz), &bw);
-            f_write(pf, lnk->hlink.ofname, sz, &bw);
+            r = f_write(pf, &sz, sizeof(sz), &bw);
+            if (r != FR_OK) goto ex;
+            r = f_write(pf, lnk->hlink.ofname, sz, &bw);
+            if (r != FR_OK) goto ex;
         } else {
-            f_write(pf, &lnk->desc.mode, sizeof(lnk->desc.mode), &bw);
-            // no owner support for now
+            r = f_write(pf, &lnk->desc.mode, sizeof(lnk->desc.mode), &bw);
+            if (r != FR_OK) goto ex;
         }
     }
 ex:
@@ -263,19 +266,23 @@ static FRESULT __in_hfa() append_to_extfs(posix_link_t* lnk) {
     r = f_lseek(pf, f_size(pf));
     if (r != FR_OK) goto err;
     UINT bw;
-    f_write(pf, &lnk->type, 1, &bw);
+    r = f_write(pf, &lnk->type, 1, &bw);
+    if (r != FR_OK) goto err;
     r = f_write(pf, &lnk->hash, sizeof(lnk->hash), &bw);
-    if (r != FR_OK) { /// TODO: error handling
-        goto err;
-    }
+    if (r != FR_OK) goto err;
     uint16_t sz = (uint16_t)strlen(lnk->fname);
-    f_write(pf, &sz, sizeof(sz), &bw);
-    f_write(pf, lnk->fname, sz, &bw);
-    f_write(pf, &lnk->desc.mode, sizeof(lnk->desc.mode), &bw);
+    r = f_write(pf, &sz, sizeof(sz), &bw);
+    if (r != FR_OK) goto err;
+    r = f_write(pf, lnk->fname, sz, &bw);
+    if (r != FR_OK) goto err;
+    r = f_write(pf, &lnk->desc.mode, sizeof(lnk->desc.mode), &bw);
+    if (r != FR_OK) goto err;
     if (lnk->type == 'H') {
         sz = (uint16_t)strlen(lnk->hlink.ofname);
-        f_write(pf, &sz, sizeof(sz), &bw);
-        f_write(pf, lnk->hlink.ofname, sz, &bw);
+        r = f_write(pf, &sz, sizeof(sz), &bw);
+        if (r != FR_OK) goto err;
+        r = f_write(pf, lnk->hlink.ofname, sz, &bw);
+        if (r != FR_OK) goto err;
     }
 err:
     f_close(pf);

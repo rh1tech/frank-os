@@ -31,9 +31,11 @@ char* __in_hfa() copy_str(const char* s) {
 
 cmd_ctx_t* __in_hfa() clone_ctx(cmd_ctx_t* src) {
     cmd_ctx_t* res = __new_ctx();
+    if (!res) return NULL;
     if (src->argc && src->argv) {
         res->argc = src->argc;
         res->argv = (char**)pvPortCalloc(res->argc + 1, sizeof(char*));
+        if (!res->argv) { res->argc = 0; return res; }
         for(int i = 0; i < src->argc; ++i) {
             res->argv[i] = copy_str(src->argv[i]);
         }
@@ -56,12 +58,14 @@ cmd_ctx_t* __in_hfa() clone_ctx(cmd_ctx_t* src) {
     }
     if (src->vars_num && src->vars) {
         res->vars = (vars_t*)pvPortMalloc( sizeof(vars_t) * src->vars_num );
-        res->vars_num = src->vars_num;
-        for (size_t i = 0; i < src->vars_num; ++i) {
-            if (src->vars[i].value) {
-                res->vars[i].value = copy_str(src->vars[i].value);
+        if (res->vars) {
+            res->vars_num = src->vars_num;
+            for (size_t i = 0; i < src->vars_num; ++i) {
+                if (src->vars[i].value) {
+                    res->vars[i].value = copy_str(src->vars[i].value);
+                }
+                res->vars[i].key = copy_str(src->vars[i].key);
             }
-            res->vars[i].key = copy_str(src->vars[i].key);
         }
     }
     res->pboot_ctx = src->pboot_ctx; src->pboot_ctx = 0;
@@ -219,33 +223,50 @@ char* __in_hfa() concat2(const char* s1, size_t s, const char* s2) {
 
 void __in_hfa() set_ctx_var(cmd_ctx_t* ctx, const char* key, const char* val) {
     if (!ctx || !key || !val) return;
+    /* Check for existing key — update value in place. */
+    taskENTER_CRITICAL();
     for (size_t i = 0; i < ctx->vars_num; ++i) {
         if (0 == strcmp(key, ctx->vars[i].key)) {
-            if( ctx->vars[i].value ) {
-                vPortFree(ctx->vars[i].value);
-            }
-            ctx->vars[i].value = copy_str(val);
+            char* old_val = ctx->vars[i].value;
+            taskEXIT_CRITICAL();
+            char* new_val = copy_str(val);
+            taskENTER_CRITICAL();
+            ctx->vars[i].value = new_val;
+            taskEXIT_CRITICAL();
+            vPortFree(old_val);
             return;
         }
     }
-    // not found — grow vars array
-    if (ctx->vars == NULL) {
-        ctx->vars = (vars_t*)pvPortMalloc(sizeof(vars_t));
-    } else {
-        vars_t* old = ctx->vars;
-        vars_t* nv = (vars_t*)pvPortMalloc( sizeof(vars_t) * (ctx->vars_num + 1) );
-        if (!nv) return;  // out of memory — leave vars unchanged
-        memcpy(nv, old, sizeof(vars_t) * ctx->vars_num);
-        ctx->vars = nv;
-        vPortFree(old);
+    taskEXIT_CRITICAL();
+    /* Not found — allocate new entry outside critical section, then
+     * swap the pointer atomically. */
+    char* new_key = copy_str(key);
+    char* new_val = copy_str(val);
+    if (!new_key || !new_val) {
+        vPortFree(new_key);
+        vPortFree(new_val);
+        return;
     }
-    if (!ctx->vars) return;
-    ctx->vars[ctx->vars_num].key = copy_str(key);
-    ctx->vars[ctx->vars_num].value = copy_str(val);
-    if (!ctx->vars[ctx->vars_num].key || !ctx->vars[ctx->vars_num].value) return;
+    vars_t* nv = NULL;
+    if (ctx->vars == NULL) {
+        nv = (vars_t*)pvPortMalloc(sizeof(vars_t));
+    } else {
+        nv = (vars_t*)pvPortMalloc( sizeof(vars_t) * (ctx->vars_num + 1) );
+        if (nv) memcpy(nv, ctx->vars, sizeof(vars_t) * ctx->vars_num);
+    }
+    if (!nv) {
+        vPortFree(new_key);
+        vPortFree(new_val);
+        return;
+    }
+    nv[ctx->vars_num].key = new_key;
+    nv[ctx->vars_num].value = new_val;
+    taskENTER_CRITICAL();
+    vars_t* old = ctx->vars;
+    ctx->vars = nv;
     ctx->vars_num++;
-    // goutf("%d/%d %s=%s\n", ctx->vars_num, ctx->vars_num, key, ctx->vars[ctx->vars_num - 1].value);
-   // taskEXIT_CRITICAL();
+    taskEXIT_CRITICAL();
+    vPortFree(old);
 }
 
 char* __in_hfa() get_ctx_var(cmd_ctx_t* ctx, const char* key) {
@@ -426,9 +447,14 @@ int __in_hfa() history_steps(cmd_ctx_t* ctx, int cmd_history_idx, string_t* s_cm
     size_t cdl = strlen(tmp);
     char * cmd_history_file = concat(tmp, _cmd_history);
     FIL* pfh = (FIL*)pvPortMalloc(sizeof(FIL));
+    if (!pfh) { vPortFree(cmd_history_file); return 0; }
     int idx = 0;
     UINT br;
-    f_open(pfh, cmd_history_file, FA_READ);
+    if (FR_OK != f_open(pfh, cmd_history_file, FA_READ)) {
+        vPortFree(pfh);
+        vPortFree(cmd_history_file);
+        return 0;
+    }
     char* b = (char*)pvPortMalloc(512);
     while(f_read(pfh, b, 512, &br) == FR_OK && br) {
         for(size_t i = 0; i < br; ++i) {
@@ -509,8 +535,14 @@ inline static void __in_hfa() cmd_write_history(cmd_ctx_t* ctx, string_t* s_cmd)
     if(!tmp) tmp = "";
     size_t cdl = strlen(tmp);
     char * cmd_history_file = concat(tmp, _cmd_history);
+    if (!cmd_history_file) return;
     FIL* pfh = (FIL*)pvPortMalloc(sizeof(FIL));
-    f_open(pfh, cmd_history_file, FA_OPEN_ALWAYS | FA_WRITE | FA_OPEN_APPEND);
+    if (!pfh) { vPortFree(cmd_history_file); return; }
+    if (FR_OK != f_open(pfh, cmd_history_file, FA_OPEN_ALWAYS | FA_WRITE | FA_OPEN_APPEND)) {
+        vPortFree(pfh);
+        vPortFree(cmd_history_file);
+        return;
+    }
     UINT br;
     f_write(pfh, s_cmd->p, s_cmd->size, &br);
     f_write(pfh, "\n", 1, &br);
@@ -592,14 +624,17 @@ inline static bool __in_hfa() prepare_ctx(string_t* pcmd, cmd_ctx_t* ctx) {
 
 inline static cmd_ctx_t* __in_hfa() new_ctx(cmd_ctx_t* src) {
     cmd_ctx_t* res = __new_ctx();
+    if (!res) return NULL;
     if (src->vars_num && src->vars) {
         res->vars = (vars_t*)pvPortMalloc( sizeof(vars_t) * src->vars_num );
-        res->vars_num = src->vars_num;
-        for (size_t i = 0; i < src->vars_num; ++i) {
-            if (src->vars[i].value) {
-                res->vars[i].value = copy_str(src->vars[i].value);
+        if (res->vars) {
+            res->vars_num = src->vars_num;
+            for (size_t i = 0; i < src->vars_num; ++i) {
+                if (src->vars[i].value) {
+                    res->vars[i].value = copy_str(src->vars[i].value);
+                }
+                res->vars[i].key = copy_str(src->vars[i].key);
             }
-            res->vars[i].key = copy_str(src->vars[i].key);
         }
     }
     res->stage = src->stage;
@@ -670,7 +705,9 @@ void __in_hfa() op_console(cmd_ctx_t* ctx, FRFpvUpU_ptr_t fn, BYTE mode) {
     if(!tmp) tmp = "";
     size_t cdl = strlen(tmp);
     char * mc_con_file = concat(tmp, _mc_con);
+    if (!mc_con_file) return;
     FIL* pfh = (FIL*)pvPortMalloc(sizeof(FIL));
+    if (!pfh) { vPortFree(mc_con_file); return; }
     if (FR_OK != f_open(pfh, mc_con_file, mode)) {
         goto r;
     }

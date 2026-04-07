@@ -118,6 +118,7 @@ bool wm_post_event(hwnd_t hwnd, const window_event_t *event) {
     uint32_t save = spin_lock_blocking(eq_spinlock);
     if (eq_count >= WM_EVENT_QUEUE_SIZE) {
         spin_unlock(eq_spinlock, save);
+        printf("[wm] event queue full, dropping type=%d hwnd=%d\n", event->type, hwnd);
         return false;
     }
     event_queue[eq_head] = *event;
@@ -838,4 +839,26 @@ void wm_clear_modal(void) {
 
 hwnd_t wm_get_modal(void) {
     return modal_hwnd;
+}
+
+void wm_event_clear_refs(hwnd_t hwnd) {
+    if (hwnd == HWND_NULL) return;
+    if (drag_hwnd == hwnd) {
+        drag_mode = DRAG_NONE;
+        drag_hwnd = HWND_NULL;
+        drag_overlay_erase();
+    }
+    if (modal_hwnd == hwnd)
+        modal_hwnd = HWND_NULL;
+    if (titlebar_btn_hwnd == hwnd) {
+        titlebar_btn_hwnd = HWND_NULL;
+        titlebar_btn_zone = HT_NOWHERE;
+        titlebar_btn_shown = false;
+    }
+    if (kb_move_hwnd == hwnd) {
+        kb_move_active = false;
+        kb_move_hwnd = HWND_NULL;
+    }
+    if (dblclick_hwnd == hwnd)
+        dblclick_hwnd = HWND_NULL;
 }

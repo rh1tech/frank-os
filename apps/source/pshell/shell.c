@@ -101,15 +101,19 @@ char* full_path(const char* name) {
     if (name == NULL)
         return NULL;
     if (name[0] == '/') {
-        strcpy(path, name);
+        strncpy(path, name, sizeof(path) - 1);
+        path[sizeof(path) - 1] = 0;
         return path;
     }
     if (strncmp(name, "./", 2) == 0)
         name += 2;
-    strcpy(path, curdir);
+    strncpy(path, curdir, sizeof(path) - 1);
+    path[sizeof(path) - 1] = 0;
     if (strncmp(name, "../", 3) != 0) {
-        if (name[0])
-            strcat(path, name);
+        if (name[0]) {
+            int rem = sizeof(path) - 1 - strlen(path);
+            if (rem > 0) strncat(path, name, rem);
+        }
     } else {
         name += 3; // root doen't have a parent
         char* cp = strrchr(path, '/');
@@ -118,7 +122,8 @@ char* full_path(const char* name) {
         cp = strrchr(path, '/');
         if (cp != NULL)
             *(cp + 1) = 0;
-        strcat(path, name);
+        int rem = sizeof(path) - 1 - strlen(path);
+        if (rem > 0) strncat(path, name, rem);
     }
     return path;
 }
@@ -158,7 +163,7 @@ static int xmodem_tx_cb(uint8_t* buf, uint32_t len) { return fs_file_read(&file,
 static bool check_mount(bool need) {
     if (mounted == need)
         return false;
-    sprintf(result, "filesystem is %smounted", (need ? "not " : ""));
+    snprintf(result, sizeof(result), "filesystem is %smounted", (need ? "not " : ""));
     return true;
 }
 
@@ -184,7 +189,7 @@ static void xput_cmd(void) {
     xmodemReceive(xmodem_rx_cb);
     set_translate_crlf(true);
     busy_wait_ms(3000);
-    sprintf(result, "\nfile transfered, size: %d", fs_file_seek(&file, 0, LFS_SEEK_END));
+    snprintf(result, sizeof(result), "\nfile transfered, size: %d", fs_file_seek(&file, 0, LFS_SEEK_END));
     fs_file_close(&file);
 }
 
@@ -206,7 +211,7 @@ static void yput_cmd(void) {
     set_translate_crlf(true);
     fs_file_close(&file);
     if (res >= 0) {
-        sprintf(result, "\nfile transfered, size: %d", fs_file_seek(&file, 0, LFS_SEEK_END));
+        snprintf(result, sizeof(result), "\nfile transfered, size: %d", fs_file_seek(&file, 0, LFS_SEEK_END));
         fs_rename(tmpname, full_path(name));
     } else {
         strcpy(result, "File transfer failed");
@@ -237,7 +242,7 @@ int check_from_to_parms(char** from, char** to, int copy) {
         }
         struct lfs_info info;
         if (fs_stat(*from, &info) < LFS_ERR_OK) {
-            sprintf(result, "%s not found", *from);
+            snprintf(result, sizeof(result), "%s not found", *from);
             break;
         }
         from_is_dir = info.type == LFS_TYPE_DIR;
@@ -290,9 +295,9 @@ static void mv_cmd(void) {
         return;
     struct lfs_info info;
     if (fs_rename(from, to) < LFS_ERR_OK)
-        sprintf(result, "could not move %s to %s", from, to);
+        snprintf(result, sizeof(result), "could not move %s to %s", from, to);
     else
-        sprintf(result, "%s moved to %s", from, to);
+        snprintf(result, sizeof(result), "%s moved to %s", from, to);
     free(from);
     free(to);
 }
@@ -338,19 +343,19 @@ static void cp_cmd(void) {
             break;
         }
         if (fs_file_open(&in, from, LFS_O_RDONLY) < LFS_ERR_OK) {
-            sprintf(result, "error opening %s", from);
+            snprintf(result, sizeof(result), "error opening %s", from);
             break;
         }
         in_ok = true;
         if (fs_file_open(&out, to, LFS_O_WRONLY | LFS_O_CREAT | LFS_O_TRUNC) < LFS_ERR_OK) {
-            sprintf(result, "error opening %s", from);
+            snprintf(result, sizeof(result), "error opening %s", from);
             break;
         }
         out_ok = true;
         int l = fs_file_read(&in, buf, 4096);
         while (l > 0) {
             if (fs_file_write(&out, buf, l) != l) {
-                sprintf(result, "error writing %s", to);
+                snprintf(result, sizeof(result), "error writing %s", to);
                 break;
             }
             l = fs_file_read(&in, buf, 4096);
@@ -366,7 +371,7 @@ static void cp_cmd(void) {
         free(buf);
     }
     if (!result[0])
-        sprintf(result, "file %s copied to %s", from, to);
+        snprintf(result, sizeof(result), "file %s copied to %s", from, to);
     free(from);
     free(to);
 }
@@ -388,7 +393,7 @@ static void cat_cmd(void) {
     lfs_file_t file;
     char* fpath = full_path(path);
     if (fs_file_open(&file, fpath, LFS_O_RDONLY) < LFS_ERR_OK) {
-        sprintf(result, "error opening file %s", fpath);
+        snprintf(result, sizeof(result), "error opening file %s", fpath);
         return;
     }
     int l = fs_file_seek(&file, 0, LFS_SEEK_END);
@@ -401,7 +406,7 @@ static void cat_cmd(void) {
     int line = 0;
     int last = 0;
     if (fs_file_read(&file, buf, l) != l) {
-        sprintf(result, "error reading file %s", fpath);
+        snprintf(result, sizeof(result), "error reading file %s", fpath);
         goto done;
     }
     char* cp_end = buf + l;
@@ -440,7 +445,7 @@ static void hex_cmd(void) {
     lfs_file_t file;
     char* fpath = full_path(path);
     if (fs_file_open(&file, fpath, LFS_O_RDONLY) < LFS_ERR_OK) {
-        sprintf(result, "error opening file %s", fpath);
+        snprintf(result, sizeof(result), "error opening file %s", fpath);
         return;
     }
     int l = fs_file_seek(&file, 0, LFS_SEEK_END);
@@ -451,7 +456,7 @@ static void hex_cmd(void) {
         return;
     }
     if (fs_file_read(&file, buf, l) != l) {
-        sprintf(result, "error reading file %s", fpath);
+        snprintf(result, sizeof(result), "error reading file %s", fpath);
         goto done;
     }
     char* p = buf;
@@ -526,7 +531,7 @@ static void yget_cmd(void) {
     if (res)
         strcpy(result, "File transfer failed");
     else
-        sprintf(result, "%d bytes sent", siz);
+        snprintf(result, sizeof(result), "%d bytes sent", siz);
 }
 #endif /* !PSHELL_FRANKOS */
 
@@ -539,7 +544,7 @@ static void mkdir_cmd(void) {
         strcpy(result, "Can't create directory");
         return;
     }
-    sprintf(result, "%s created", full_path(argv[1]));
+    snprintf(result, sizeof(result), "%s created", full_path(argv[1]));
 }
 
 static char rmdir_path[256];
@@ -547,8 +552,8 @@ static char rmdir_path[256];
 static bool clean_dir(char* name) {
     int path_len = strlen(rmdir_path);
     if (path_len)
-        strcat(rmdir_path, "/");
-    strcat(rmdir_path, name);
+        strncat(rmdir_path, "/", sizeof(rmdir_path) - 1 - strlen(rmdir_path));
+    strncat(rmdir_path, name, sizeof(rmdir_path) - 1 - strlen(rmdir_path));
     lfs_dir_t dir_f;
     if (fs_dir_open(&dir_f, rmdir_path) < LFS_ERR_OK) {
         printf("can't open %s directory\n", rmdir_path);
@@ -565,8 +570,8 @@ static bool clean_dir(char* name) {
     while (fs_dir_read(&dir_f, &info) > 0) {
         if (info.type == LFS_TYPE_REG) {
             int plen = strlen(rmdir_path);
-            strcat(rmdir_path, "/");
-            strcat(rmdir_path, info.name);
+            strncat(rmdir_path, "/", sizeof(rmdir_path) - 1 - plen);
+            strncat(rmdir_path, info.name, sizeof(rmdir_path) - 1 - strlen(rmdir_path));
             if (fs_remove(rmdir_path) < LFS_ERR_OK) {
                 printf("can't remove %s", rmdir_path);
                 fs_dir_close(&dir_f);
@@ -578,7 +583,7 @@ static bool clean_dir(char* name) {
     }
     fs_dir_close(&dir_f);
     if (fs_remove(rmdir_path) < LFS_ERR_OK) {
-        sprintf(result, "can't remove %s", rmdir_path);
+        snprintf(result, sizeof(result), "can't remove %s", rmdir_path);
         return false;
     }
     printf("%s removed\n", rmdir_path);
@@ -604,7 +609,7 @@ static void rm_cmd(void) {
     struct lfs_info info;
     char* fp = full_path(argv[1]);
     if (fs_stat(fp, &info) < LFS_ERR_OK) {
-        sprintf(result, "%s not found", full_path(argv[1]));
+        snprintf(result, sizeof(result), "%s not found", full_path(argv[1]));
         return;
     }
     int isdir = 0;
@@ -623,13 +628,13 @@ static void rm_cmd(void) {
                 clean_dir(fp);
                 return;
             } else
-                sprintf(result, "directory %s not empty", fp);
+                snprintf(result, sizeof(result), "directory %s not empty", fp);
             return;
         }
     }
     if (fs_remove(fp) < LFS_ERR_OK)
         strcpy(result, "Can't remove file or directory");
-    sprintf(result, "%s %s removed", isdir ? "directory" : "file", fp);
+    snprintf(result, sizeof(result), "%s %s removed", isdir ? "directory" : "file", fp);
 }
 
 static void mount_cmd(void) {
@@ -680,7 +685,7 @@ static void format_cmd(void) {
     strcpy(result, "formatted");
 }
 
-static void disk_space(uint64_t n, char* buf) {
+static void disk_space(uint64_t n, char* buf, int bufsz) {
     double d = n;
     static const char* suffix[] = {"B", "KB", "MB", "GB", "TB"};
     char** sfx = (char**)suffix;
@@ -688,7 +693,7 @@ static void disk_space(uint64_t n, char* buf) {
         d /= 1000.0;
         sfx++;
     }
-    sprintf(buf, "%.1f%s", d, *sfx);
+    snprintf(buf, bufsz, "%.1f%s", d, *sfx);
 }
 
 static void status_cmd(void) {
@@ -697,32 +702,34 @@ static void status_cmd(void) {
         fs_fsstat(&stat);
         const char percent = 37;
         char total_size[32], used_size[32];
-        disk_space((int64_t)stat.block_count * stat.block_size, total_size);
-        disk_space((int64_t)stat.blocks_used * stat.block_size, used_size);
+        disk_space((int64_t)stat.block_count * stat.block_size, total_size, sizeof(total_size));
+        disk_space((int64_t)stat.blocks_used * stat.block_size, used_size, sizeof(used_size));
 #ifndef NDEBUG
         printf("\ntext size 0x%x (%d), bss size 0x%x (%d)", stat.text_size, stat.text_size,
                stat.bss_size, stat.bss_size);
 #endif
-        sprintf(result, "Storage - blocks: total %d, used %d, size %d (%s of %s, %1.1f%c used)\n",
+        snprintf(result, sizeof(result), "Storage - blocks: total %d, used %d, size %d (%s of %s, %1.1f%c used)\n",
                 (int)stat.block_count, (int)stat.blocks_used, (int)stat.block_size, used_size,
                 total_size, stat.blocks_used * 100.0 / stat.block_count, percent);
     } else
-        sprintf(result, "Storage - not mounted\n");
+        snprintf(result, sizeof(result), "Storage - not mounted\n");
 #ifdef PSHELL_FRANKOS
     {
         int cols, rows;
         vt100_get_size(&cols, &rows);
-        sprintf(result + strlen(result),
+        { int off = strlen(result);
+        snprintf(result + off, sizeof(result) - off,
                 "Memory  - program code space: %dK, global data space: %dK\n"
                 "Console - FRANK OS window, width %d, height %d",
-                prog_space / 1024, data_space / 1024, cols, rows);
+                prog_space / 1024, data_space / 1024, cols, rows); }
     }
 #else
-    sprintf(result + strlen(result),
+    { int off = strlen(result);
+    snprintf(result + off, sizeof(result) - off,
             "Memory  - heap: %.1fK, program code space: %dK, global data space: %dK\n"
             "Console - %s, width %d, height %d",
             (&__heap_end - &__heap_start) / 1024.0, prog_space / 1024, data_space / 1024, console,
-            screen_x, screen_y);
+            screen_x, screen_y); }
 #endif
 }
 
@@ -793,10 +800,11 @@ static void cd_cmd(void) {
     }
     fs_dir_close(&dir);
 cd_done:
-    strcpy(curdir, path);
+    strncpy(curdir, path, sizeof(curdir) - 1);
+    curdir[sizeof(curdir) - 1] = 0;
     if (curdir[strlen(curdir) - 1] != '/')
-        strcat(curdir, "/");
-    sprintf(result, "changed to %s", curdir);
+        strncat(curdir, "/", sizeof(curdir) - 1 - strlen(curdir));
+    snprintf(result, sizeof(result), "changed to %s", curdir);
 }
 
 static void cc_cmd(void) {
