@@ -532,11 +532,11 @@ static void np_blink_callback(TimerHandle_t xTimer) {
 
     textarea_t *ta = &np.ta;
 
-    /* Compute cursor line and column from buffer position */
+    /* Compute cursor line and column from buffer position (UTF-8 aware) */
     int32_t cline = 0, ccol = 0;
     for (int32_t i = 0; i < ta->cursor && i < ta->len; i++) {
         if (ta->buf[i] == '\n') { cline++; ccol = 0; }
-        else ccol++;
+        else if (((uint8_t)ta->buf[i] & 0xC0) != 0x80) ccol++; /* skip continuation bytes */
     }
 
     /* Client-space pixel coordinates */
@@ -1055,12 +1055,20 @@ static void np_paint_textarea(textarea_t *ta) {
             }
         }
 
-        /* Draw characters of this line */
+        /* Draw characters of this line (UTF-8 aware) */
         int32_t col = 0;
-        for (int32_t i = line_start; i < line_end; i++, col++) {
+        int32_t i = line_start;
+        while (i < line_end) {
             int32_t px = tx + col * FONT_UI_WIDTH - ta->scroll_x;
 
-            if (px + FONT_UI_WIDTH <= tx) continue;
+            /* Determine byte length of this UTF-8 character */
+            uint8_t b0 = (uint8_t)ta->buf[i];
+            int32_t clen = 1;
+            if (b0 >= 0xF0 && i + 3 < line_end) clen = 4;
+            else if (b0 >= 0xE0 && i + 2 < line_end) clen = 3;
+            else if (b0 >= 0xC0 && i + 1 < line_end) clen = 2;
+
+            if (px + FONT_UI_WIDTH <= tx) { i += clen; col++; continue; }
             if (px >= tx + tw) break;
 
             bool in_sel = (sel_s != sel_e && i >= sel_s && i < sel_e);
@@ -1077,7 +1085,22 @@ static void np_paint_textarea(textarea_t *ta) {
                 }
             }
 
-            wd_char_ui(px, py, ta->buf[i], fg, bg);
+            /* Render the UTF-8 character via wd_text_ui (which decodes UTF-8) */
+            if (clen == 1) {
+                wd_char_ui(px, py, ta->buf[i], fg, bg);
+            } else {
+                /* Multi-byte: extract substring and render */
+                char tmp[5];
+                int32_t j;
+                for (j = 0; j < clen && j < 4; j++) tmp[j] = ta->buf[i + j];
+                tmp[j] = '\0';
+                /* Fill background first, then draw text */
+                wd_fill_rect(px, py, FONT_UI_WIDTH, FONT_UI_HEIGHT, bg);
+                wd_text_ui(px, py, tmp, fg, bg);
+            }
+
+            i += clen;
+            col++;
         }
 
         /* Selection highlight for trailing newline */
@@ -1103,11 +1126,11 @@ static void np_paint_textarea(textarea_t *ta) {
 
     /* Draw cursor */
     if (ta->cursor_visible) {
-        /* Compute cursor line and column */
+        /* Compute cursor line and column (UTF-8 aware) */
         int32_t cline = 0, ccol = 0;
         for (int32_t i = 0; i < ta->cursor && i < ta->len; i++) {
             if (ta->buf[i] == '\n') { cline++; ccol = 0; }
-            else ccol++;
+            else if (((uint8_t)ta->buf[i] & 0xC0) != 0x80) ccol++; /* skip continuation bytes */
         }
         int32_t cx = tx + ccol * FONT_UI_WIDTH - ta->scroll_x;
         int32_t cy = ty + cline * FONT_UI_HEIGHT - ta->scroll_y;

@@ -351,6 +351,27 @@ static void ta_get_text_rect(const textarea_t *ta,
 }
 
 /* Get line number and column from byte offset */
+/* UTF-8 helpers for cursor movement */
+static inline bool ta_is_utf8_cont(char c) {
+    return ((uint8_t)c & 0xC0) == 0x80;
+}
+
+/* Move cursor forward by one UTF-8 character */
+static inline int32_t ta_next_char(const textarea_t *ta, int32_t pos) {
+    if (pos >= ta->len) return pos;
+    pos++;
+    while (pos < ta->len && ta_is_utf8_cont(ta->buf[pos])) pos++;
+    return pos;
+}
+
+/* Move cursor backward by one UTF-8 character */
+static inline int32_t ta_prev_char(const textarea_t *ta, int32_t pos) {
+    if (pos <= 0) return 0;
+    pos--;
+    while (pos > 0 && ta_is_utf8_cont(ta->buf[pos])) pos--;
+    return pos;
+}
+
 static void ta_offset_to_lc(const textarea_t *ta, int32_t offset,
                               int32_t *line, int32_t *col) {
     int32_t l = 0, c = 0;
@@ -358,7 +379,7 @@ static void ta_offset_to_lc(const textarea_t *ta, int32_t offset,
         if (ta->buf[i] == '\n') {
             l++;
             c = 0;
-        } else {
+        } else if (!ta_is_utf8_cont(ta->buf[i])) {
             c++;
         }
     }
@@ -638,20 +659,38 @@ void textarea_paint(textarea_t *ta) {
         int32_t line_end = line_start;
         while (line_end < ta->len && ta->buf[line_end] != '\n') line_end++;
 
-        /* Draw characters of this line */
+        /* Draw characters of this line (UTF-8 aware) */
         int32_t col = 0;
-        for (int32_t i = line_start; i < line_end; i++, col++) {
+        int32_t i = line_start;
+        while (i < line_end) {
             int32_t px = tx + col * FONT_UI_WIDTH - ta->scroll_x;
 
-            /* Clip to text area */
-            if (px + FONT_UI_WIDTH <= tx) continue;
+            /* Determine UTF-8 character byte length */
+            uint8_t b0 = (uint8_t)ta->buf[i];
+            int32_t clen = 1;
+            if (b0 >= 0xF0 && i + 3 <= line_end) clen = 4;
+            else if (b0 >= 0xE0 && i + 2 <= line_end) clen = 3;
+            else if (b0 >= 0xC0 && i + 1 <= line_end) clen = 2;
+
+            if (px + FONT_UI_WIDTH <= tx) { i += clen; col++; continue; }
             if (px >= tx + tw) break;
 
             bool in_sel = (sel_s != sel_e && i >= sel_s && i < sel_e);
             uint8_t fg = in_sel ? COLOR_WHITE : COLOR_BLACK;
             uint8_t bg = in_sel ? COLOR_BLUE : COLOR_WHITE;
 
-            wd_char_ui(px, py, ta->buf[i], fg, bg);
+            if (clen == 1) {
+                wd_char_ui(px, py, ta->buf[i], fg, bg);
+            } else {
+                char tmp[5];
+                int32_t j;
+                for (j = 0; j < clen && j < 4; j++) tmp[j] = ta->buf[i + j];
+                tmp[j] = '\0';
+                wd_fill_rect(px, py, FONT_UI_WIDTH, FONT_UI_HEIGHT, bg);
+                wd_text_ui(px, py, tmp, fg, bg);
+            }
+            i += clen;
+            col++;
         }
 
         /* Draw selection highlight for the remainder of a selected line */
@@ -744,12 +783,12 @@ static bool ta_key_event(textarea_t *ta, const window_event_t *event) {
             if (ta->cursor > 0) {
                 if (ctrl) {
                     /* Word left */
-                    ta->cursor--;
+                    ta->cursor = ta_prev_char(ta, ta->cursor);
                     while (ta->cursor > 0 && ta->buf[ta->cursor - 1] != ' ' &&
                            ta->buf[ta->cursor - 1] != '\n')
-                        ta->cursor--;
+                        ta->cursor = ta_prev_char(ta, ta->cursor);
                 } else {
-                    ta->cursor--;
+                    ta->cursor = ta_prev_char(ta, ta->cursor);
                 }
             }
             if (!shift) ta->sel_anchor = -1;
@@ -771,13 +810,13 @@ static bool ta_key_event(textarea_t *ta, const window_event_t *event) {
             if (ta->cursor < ta->len) {
                 if (ctrl) {
                     /* Word right */
-                    ta->cursor++;
+                    ta->cursor = ta_next_char(ta, ta->cursor);
                     while (ta->cursor < ta->len &&
                            ta->buf[ta->cursor] != ' ' &&
                            ta->buf[ta->cursor] != '\n')
-                        ta->cursor++;
+                        ta->cursor = ta_next_char(ta, ta->cursor);
                 } else {
-                    ta->cursor++;
+                    ta->cursor = ta_next_char(ta, ta->cursor);
                 }
             }
             if (!shift) ta->sel_anchor = -1;
@@ -894,11 +933,14 @@ static bool ta_key_event(textarea_t *ta, const window_event_t *event) {
             return true;
         }
         if (ta->cursor > 0) {
-            memmove(ta->buf + ta->cursor - 1,
+            /* Delete one UTF-8 character backward */
+            int32_t prev = ta_prev_char(ta, ta->cursor);
+            int32_t del_len = ta->cursor - prev;
+            memmove(ta->buf + prev,
                     ta->buf + ta->cursor,
                     ta->len - ta->cursor);
-            ta->len--;
-            ta->cursor--;
+            ta->len -= del_len;
+            ta->cursor = prev;
             ta->buf[ta->len] = '\0';
             ta_scan_lines(ta);
             ta_update_scrollbars(ta);
@@ -918,10 +960,13 @@ static bool ta_key_event(textarea_t *ta, const window_event_t *event) {
             return true;
         }
         if (ta->cursor < ta->len) {
+            /* Delete one UTF-8 character forward */
+            int32_t next = ta_next_char(ta, ta->cursor);
+            int32_t del_len = next - ta->cursor;
             memmove(ta->buf + ta->cursor,
-                    ta->buf + ta->cursor + 1,
-                    ta->len - ta->cursor - 1);
-            ta->len--;
+                    ta->buf + next,
+                    ta->len - next);
+            ta->len -= del_len;
             ta->buf[ta->len] = '\0';
             ta_scan_lines(ta);
             ta_update_scrollbars(ta);
