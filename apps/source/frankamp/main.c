@@ -11,6 +11,40 @@
 #include "frankos-app.h"
 #include "lang.h"
 
+/* App-local translations */
+enum { AL_MUSIC, AL_PLAY, AL_PAUSE, AL_STOP, AL_NEXT, AL_PREV, AL_SHUFFLE, AL_REPEAT, AL_ADD, AL_REMOVE, AL_OPEN_AUDIO, AL_ABOUT, AL_OPEN_MENU, AL_COUNT };
+static const char *al_en[] = {
+    [AL_MUSIC]      = "Music",
+    [AL_PLAY]       = "Play",
+    [AL_PAUSE]      = "Pause",
+    [AL_STOP]       = "Stop",
+    [AL_NEXT]       = "Next Track",
+    [AL_PREV]       = "Previous Track",
+    [AL_SHUFFLE]    = "Shuffle",
+    [AL_REPEAT]     = "Repeat",
+    [AL_ADD]        = "+Add",
+    [AL_REMOVE]     = "-Rem",
+    [AL_OPEN_AUDIO] = "Open Audio",
+    [AL_ABOUT]      = "About FrankAmp",
+    [AL_OPEN_MENU]  = "Open.. Ctrl+O",
+};
+static const char *al_ru[] = {
+    [AL_MUSIC]      = "\xD0\x9C\xD1\x83\xD0\xB7\xD1\x8B\xD0\xBA\xD0\xB0",
+    [AL_PLAY]       = "\xD0\x92\xD0\xBE\xD1\x81\xD0\xBF\xD1\x80\xD0\xBE\xD0\xB8\xD0\xB7\xD0\xB2\xD0\xB5\xD1\x81\xD1\x82\xD0\xB8",
+    [AL_PAUSE]      = "\xD0\x9F\xD0\xB0\xD1\x83\xD0\xB7\xD0\xB0",
+    [AL_STOP]       = "\xD0\xA1\xD1\x82\xD0\xBE\xD0\xBF",
+    [AL_NEXT]       = "\xD0\xA1\xD0\xBB\xD0\xB5\xD0\xB4\xD1\x83\xD1\x8E\xD1\x89\xD0\xB8\xD0\xB9 \xD1\x82\xD1\x80\xD0\xB5\xD0\xBA",
+    [AL_PREV]       = "\xD0\x9F\xD1\x80\xD0\xB5\xD0\xB4\xD1\x8B\xD0\xB4\xD1\x83\xD1\x89\xD0\xB8\xD0\xB9 \xD1\x82\xD1\x80\xD0\xB5\xD0\xBA",
+    [AL_SHUFFLE]    = "\xD0\x9F\xD0\xB5\xD1\x80\xD0\xB5\xD0\xBC\xD0\xB5\xD1\x88\xD0\xB0\xD1\x82\xD1\x8C",
+    [AL_REPEAT]     = "\xD0\x9F\xD0\xBE\xD0\xB2\xD1\x82\xD0\xBE\xD1\x80\xD1\x8F\xD1\x82\xD1\x8C",
+    [AL_ADD]        = "+\xD0\x94\xD0\xBE\xD0\xB1\xD0\xB0\xD0\xB2\xD0\xB8\xD1\x82\xD1\x8C",
+    [AL_REMOVE]     = "-\xD0\xA3\xD0\xB4\xD0\xB0\xD0\xBB\xD0\xB8\xD1\x82\xD1\x8C",
+    [AL_OPEN_AUDIO] = "\xD0\x9E\xD1\x82\xD0\xBA\xD1\x80\xD1\x8B\xD1\x82\xD1\x8C \xD0\xB0\xD1\x83\xD0\xB4\xD0\xB8\xD0\xBE",
+    [AL_ABOUT]      = "\xD0\x9E FrankAmp",
+    [AL_OPEN_MENU]  = "\xD0\x9E\xD1\x82\xD0\xBA\xD1\x80\xD1\x8B\xD1\x82\xD1\x8C  Ctrl+O",
+};
+static const char *AL(int id) { return lang_get() == LANG_RU ? al_ru[id] : al_en[id]; }
+
 /* UART debug printf */
 #define dbg_printf(...) ((int(*)(const char*, ...))_sys_table_ptrs[438])(__VA_ARGS__)
 
@@ -926,7 +960,7 @@ static void main_paint(hwnd_t hwnd) {
     }
 
     /* Open button (standard Win95 button) */
-    wd_button(228, BTN_Y, 42, BTN_H, "OPEN", false, false);
+    wd_button(228, BTN_Y, 50, BTN_H, L(STR_APP_OPEN), false, false);
 
     /* ---- Toggles + Volume row (y=96, h=14) ---- */
     draw_3d_button(4, TOGGLE_Y, 34, TOGGLE_H, fa->shuffle);
@@ -1022,15 +1056,15 @@ static void main_paint(hwnd_t hwnd) {
     wd_hline(0, PL_BOTTOM_Y, CLIENT_W, COLOR_DARK_GRAY);
 
     /* +Add button (standard Win95 button) */
-    wd_button(4, 229, 50, 16, "+Add", false, false);
+    wd_button(4, 229, 60, 16, AL(AL_ADD), false, false);
 
     /* -Rem button (standard Win95 button) */
-    wd_button(58, 229, 55, 16, "-Rem", false, false);
+    wd_button(68, 229, 60, 16, AL(AL_REMOVE), false, false);
 
     /* Track count (black on gray) */
     char count_str[20];
     snprintf(count_str, sizeof(count_str), "%d tracks", fa->pl_count);
-    int16_t count_x = CLIENT_W - (int16_t)(strlen(count_str) * FONT_UI_WIDTH) - 8;
+    int16_t count_x = CLIENT_W - (int16_t)(gfx_utf8_charcount(count_str) * FONT_UI_WIDTH) - 8;
     wd_text_ui(count_x, 231, count_str, COLOR_BLACK, COLOR_LIGHT_GRAY);
 
     wd_end();
@@ -1111,7 +1145,7 @@ static void do_play(frankamp_t *fa) {
 }
 
 static void do_open(frankamp_t *fa) {
-    file_dialog_open(fa->hwnd, L(STR_FA_OPEN_AUDIO), "/", ".mp3;.mod;.mid;.midi");
+    file_dialog_open(fa->hwnd, AL(AL_OPEN_AUDIO), "/", ".mp3;.mod;.mid;.midi");
 }
 
 /*==========================================================================
@@ -1308,7 +1342,7 @@ static bool main_event(hwnd_t hwnd, const window_event_t *ev) {
         if (cmd == CMD_SHUFFLE) { fa->shuffle = !fa->shuffle; wm_invalidate(hwnd); return true; }
         if (cmd == CMD_REPEAT)  { fa->repeat = !fa->repeat; wm_invalidate(hwnd); return true; }
         if (cmd == CMD_ABOUT) {
-            dialog_show(hwnd, L(STR_FA_ABOUT),
+            dialog_show(hwnd, AL(AL_ABOUT),
                         "FrankAmp\n\nFRANK OS v" FRANK_VERSION_STR
                         "\n(c) 2026 Mikhail Matveev\n"
                         "<xtreme@rh1.tech>\n"
@@ -1481,7 +1515,7 @@ static void setup_menu(hwnd_t hwnd) {
     file->accel_key = 0x09; /* HID 'F' */
     file->item_count = 3;
 
-    strncpy(file->items[0].text, L(STR_NP_OPEN_MENU), sizeof(file->items[0].text) - 1);
+    strncpy(file->items[0].text, AL(AL_OPEN_MENU), sizeof(file->items[0].text) - 1);
     file->items[0].command_id = CMD_OPEN;
     file->items[0].accel_key = 0x12;
 
@@ -1492,31 +1526,31 @@ static void setup_menu(hwnd_t hwnd) {
 
     /* Music menu */
     menu_def_t *music = &bar.menus[1];
-    strncpy(music->title, L(STR_FA_MUSIC), sizeof(music->title) - 1);
+    strncpy(music->title, AL(AL_MUSIC), sizeof(music->title) - 1);
     music->accel_key = 0x10; /* HID 'M' */
     music->item_count = 8;
 
-    strncpy(music->items[0].text, L(STR_FA_PLAY), sizeof(music->items[0].text) - 1);
+    strncpy(music->items[0].text, AL(AL_PLAY), sizeof(music->items[0].text) - 1);
     music->items[0].command_id = CMD_PLAY;
 
-    strncpy(music->items[1].text, L(STR_FA_PAUSE), sizeof(music->items[1].text) - 1);
+    strncpy(music->items[1].text, AL(AL_PAUSE), sizeof(music->items[1].text) - 1);
     music->items[1].command_id = CMD_PAUSE;
 
-    strncpy(music->items[2].text, L(STR_FA_STOP), sizeof(music->items[2].text) - 1);
+    strncpy(music->items[2].text, AL(AL_STOP), sizeof(music->items[2].text) - 1);
     music->items[2].command_id = CMD_STOP;
 
     music->items[3].flags = MIF_SEPARATOR;
 
-    strncpy(music->items[4].text, L(STR_FA_NEXT_TRACK), sizeof(music->items[4].text) - 1);
+    strncpy(music->items[4].text, AL(AL_NEXT), sizeof(music->items[4].text) - 1);
     music->items[4].command_id = CMD_NEXT;
 
-    strncpy(music->items[5].text, L(STR_FA_PREV_TRACK), sizeof(music->items[5].text) - 1);
+    strncpy(music->items[5].text, AL(AL_PREV), sizeof(music->items[5].text) - 1);
     music->items[5].command_id = CMD_PREV;
 
-    strncpy(music->items[6].text, "Shuffle", sizeof(music->items[6].text) - 1);
+    strncpy(music->items[6].text, AL(AL_SHUFFLE), sizeof(music->items[6].text) - 1);
     music->items[6].command_id = CMD_SHUFFLE;
 
-    strncpy(music->items[7].text, "Repeat", sizeof(music->items[7].text) - 1);
+    strncpy(music->items[7].text, AL(AL_REPEAT), sizeof(music->items[7].text) - 1);
     music->items[7].command_id = CMD_REPEAT;
 
     /* Help menu */

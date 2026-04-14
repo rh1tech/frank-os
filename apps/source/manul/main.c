@@ -11,6 +11,31 @@
 
 #include "manul.h"
 #include "lang.h"
+
+/* App-local translations */
+enum { AL_NAVIGATE, AL_BACK, AL_FORWARD, AL_STOP, AL_RELOAD, AL_NEXT_LINK, AL_PREV_LINK, AL_ABOUT, AL_COUNT };
+static const char *al_en[] = {
+    [AL_NAVIGATE]  = "Navigate",
+    [AL_BACK]      = "Back     Alt+<",
+    [AL_FORWARD]   = "Forward  Alt+>",
+    [AL_STOP]      = "Stop       Esc",
+    [AL_RELOAD]    = "Reload      F5",
+    [AL_NEXT_LINK] = "Next link  Tab",
+    [AL_PREV_LINK] = "Prev link S+Tb",
+    [AL_ABOUT]     = "About Manul",
+};
+static const char *al_ru[] = {
+    [AL_NAVIGATE]  = "\xD0\x9D\xD0\xB0\xD0\xB2\xD0\xB8\xD0\xB3\xD0\xB0\xD1\x86\xD0\xB8\xD1\x8F",
+    [AL_BACK]      = "\xD0\x9D\xD0\xB0\xD0\xB7\xD0\xB0\xD0\xB4    Alt+<",
+    [AL_FORWARD]   = "\xD0\x92\xD0\xBF\xD0\xB5\xD1\x80\xD1\x91\xD0\xB4   Alt+>",
+    [AL_STOP]      = "\xD0\xA1\xD1\x82\xD0\xBE\xD0\xBF       Esc",
+    [AL_RELOAD]    = "\xD0\x9E\xD0\xB1\xD0\xBD\xD0\xBE\xD0\xB2\xD0\xB8\xD1\x82\xD1\x8C    F5",
+    [AL_NEXT_LINK] = "\xD0\xA1\xD0\xBB\xD0\xB5\xD0\xB4. \xD1\x81\xD1\x81\xD1\x8B\xD0\xBB\xD0\xBA\xD0\xB0  Tab",
+    [AL_PREV_LINK] = "\xD0\x9F\xD1\x80\xD0\xB5\xD0\xB4. \xD1\x81\xD1\x81\xD1\x8B\xD0\xBB\xD0\xBA\xD0\xB0 S+Tb",
+    [AL_ABOUT]     = "\xD0\x9E Manul",
+};
+static const char *AL(int id) { return lang_get() == LANG_RU ? al_ru[id] : al_en[id]; }
+
 #include "html.h"
 #include "render.h"
 #include "http.h"
@@ -212,22 +237,22 @@ static void br_setup_menu(void) {
 
     /* Navigate menu */
     menu_def_t *nav = &bar.menus[1];
-    strncpy(nav->title, L(STR_MN_NAVIGATE), sizeof(nav->title) - 1);
+    strncpy(nav->title, AL(AL_NAVIGATE), sizeof(nav->title) - 1);
     nav->accel_key = 0x11; /* HID 'N' */
     nav->item_count = 7;
-    strncpy(nav->items[0].text, L(STR_MN_BACK), sizeof(nav->items[0].text) - 1);
+    strncpy(nav->items[0].text, AL(AL_BACK), sizeof(nav->items[0].text) - 1);
     nav->items[0].command_id = CMD_NAV_BACK;
-    strncpy(nav->items[1].text, L(STR_MN_FORWARD), sizeof(nav->items[1].text) - 1);
+    strncpy(nav->items[1].text, AL(AL_FORWARD), sizeof(nav->items[1].text) - 1);
     nav->items[1].command_id = CMD_NAV_FWD;
-    strncpy(nav->items[2].text, L(STR_MN_STOP), sizeof(nav->items[2].text) - 1);
+    strncpy(nav->items[2].text, AL(AL_STOP), sizeof(nav->items[2].text) - 1);
     nav->items[2].command_id = CMD_NAV_STOP;
-    strncpy(nav->items[3].text, L(STR_MN_RELOAD), sizeof(nav->items[3].text) - 1);
+    strncpy(nav->items[3].text, AL(AL_RELOAD), sizeof(nav->items[3].text) - 1);
     nav->items[3].command_id = CMD_NAV_RELOAD;
     nav->items[3].accel_key = SC_F5;
     nav->items[4].flags = MIF_SEPARATOR;
-    strncpy(nav->items[5].text, L(STR_MN_NEXT_LINK), sizeof(nav->items[5].text) - 1);
+    strncpy(nav->items[5].text, AL(AL_NEXT_LINK), sizeof(nav->items[5].text) - 1);
     nav->items[5].command_id = CMD_NEXT_LINK;
-    strncpy(nav->items[6].text, L(STR_MN_PREV_LINK), sizeof(nav->items[6].text) - 1);
+    strncpy(nav->items[6].text, AL(AL_PREV_LINK), sizeof(nav->items[6].text) - 1);
     nav->items[6].command_id = CMD_PREV_LINK;
 
     /* Help menu */
@@ -1045,7 +1070,7 @@ static bool br_event(hwnd_t hwnd, const window_event_t *ev) {
             return true;
         }
         else if (cmd == CMD_ABOUT) {
-            dialog_show(br.hwnd, L(STR_MN_ABOUT),
+            dialog_show(br.hwnd, AL(AL_ABOUT),
                         "Manul Web Browser\n\nFRANK OS v" FRANK_VERSION_STR
                         "\n(c) 2026 Mikhail Matveev\n"
                         "<xtreme@rh1.tech>\n"

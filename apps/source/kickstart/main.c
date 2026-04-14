@@ -12,6 +12,20 @@
 #include "m-os-api-ff.h"
 #include "lang.h"
 
+/* App-local translations */
+enum { AL_LAUNCH_FW, AL_FLASH_FW, AL_ABOUT, AL_COUNT };
+static const char *al_en[] = {
+    [AL_LAUNCH_FW] = "Launch Firmware",
+    [AL_FLASH_FW]  = "Flash Firmware",
+    [AL_ABOUT]     = "About Kickstart",
+};
+static const char *al_ru[] = {
+    [AL_LAUNCH_FW] = "\xD0\x97\xD0\xB0\xD0\xBF\xD1\x83\xD1\x81\xD0\xBA \xD0\xBF\xD1\x80\xD0\xBE\xD1\x88\xD0\xB8\xD0\xB2\xD0\xBA\xD0\xB8",
+    [AL_FLASH_FW]  = "\xD0\x9F\xD1\x80\xD0\xBE\xD1\x88\xD0\xB8\xD1\x82\xD1\x8C",
+    [AL_ABOUT]     = "\xD0\x9E Kickstart",
+};
+static const char *AL(int id) { return lang_get() == LANG_RU ? al_ru[id] : al_en[id]; }
+
 /* ========================================================================
  * Local string helpers (not provided by the ELF runtime)
  * ======================================================================== */
@@ -703,7 +717,7 @@ static void show_flash_dialog(hwnd_t hwnd, const char *name) {
                  "Already flashed, will reboot.", name);
         ks.flash_pending = true;
         ks.flash_index = ks.selected;
-        dialog_show(hwnd, L(STR_KS_LAUNCH_FW), dlg_text,
+        dialog_show(hwnd, AL(AL_LAUNCH_FW), dlg_text,
                     DLG_ICON_INFO, DLG_BTN_OK | DLG_BTN_CANCEL);
     } else {
         snprintf(dlg_text, sizeof(dlg_text),
@@ -712,7 +726,7 @@ static void show_flash_dialog(hwnd_t hwnd, const char *name) {
                  "flashing. Please wait.", name);
         ks.flash_pending = true;
         ks.flash_index = ks.selected;
-        dialog_show(hwnd, L(STR_KS_FLASH_FW), dlg_text,
+        dialog_show(hwnd, AL(AL_FLASH_FW), dlg_text,
                     DLG_ICON_WARNING, DLG_BTN_OK | DLG_BTN_CANCEL);
     }
 }
@@ -760,7 +774,7 @@ static bool event_handler(hwnd_t hwnd, const window_event_t *event) {
             return true;
         }
         if (id == CMD_ABOUT) {
-            dialog_show(hwnd, L(STR_KS_ABOUT),
+            dialog_show(hwnd, AL(AL_ABOUT),
                         "Kickstart\n\nFRANK OS v" FRANK_VERSION_STR
                         "\nUF2 Firmware Launcher\n"
                         "(c) 2026 Mikhail Matveev\n"
@@ -1023,14 +1037,14 @@ static int run_direct(const char *path) {
         snprintf(dlg_text, sizeof(dlg_text),
                  "Launch \"%s\"?\n\n"
                  "Already flashed, will reboot.", name);
-        dialog_show(ks.hwnd, L(STR_KS_LAUNCH_FW), dlg_text,
+        dialog_show(ks.hwnd, AL(AL_LAUNCH_FW), dlg_text,
                     DLG_ICON_INFO, DLG_BTN_OK | DLG_BTN_CANCEL);
     } else {
         snprintf(dlg_text, sizeof(dlg_text),
                  "Flash \"%s\"?\n\n"
                  "Screen will turn off during\n"
                  "flashing. Please wait.", name);
-        dialog_show(ks.hwnd, L(STR_KS_FLASH_FW), dlg_text,
+        dialog_show(ks.hwnd, AL(AL_FLASH_FW), dlg_text,
                     DLG_ICON_WARNING, DLG_BTN_OK | DLG_BTN_CANCEL);
     }
 

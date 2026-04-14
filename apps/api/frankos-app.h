@@ -189,14 +189,14 @@ struct window {
 #define MIF_DISABLED     (1u << 1)
 
 typedef struct {
-    char     text[20];
+    char     text[24];      /* UTF-8: up to ~11 Cyrillic chars + shortcut */
     uint16_t command_id;
     uint8_t  flags;
     uint8_t  accel_key;
 } menu_item_t;
 
 typedef struct {
-    char        title[12];
+    char        title[16];  /* UTF-8: up to ~7 Cyrillic chars */
     uint8_t     accel_key;
     uint8_t     item_count;
     menu_item_t items[MENU_MAX_ITEMS];
@@ -1063,6 +1063,20 @@ static inline void wd_radio(int16_t x, int16_t y, const char *label,
                              bool selected) {
     typedef void (*fn_t)(int16_t, int16_t, const char*, bool);
     ((fn_t)_sys_table_ptrs[554])(x, y, label, selected);
+}
+
+/* Count UTF-8 characters (not bytes) for width calculations */
+static inline int gfx_utf8_charcount(const char *str) {
+    int count = 0;
+    while (*str) {
+        uint8_t b = (uint8_t)*str;
+        if (b < 0x80)        str += 1;
+        else if (b < 0xE0)   str += 2;
+        else if (b < 0xF0)   str += 3;
+        else                  str += 4;
+        count++;
+    }
+    return count;
 }
 
 /* ========================================================================

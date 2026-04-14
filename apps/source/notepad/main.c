@@ -13,6 +13,22 @@
 #include "frankos-app.h"
 #include "lang.h"
 
+/* App-local translations */
+enum { AL_ABOUT, AL_NEW_MENU, AL_OPEN_MENU, AL_SAVE_MENU, AL_COUNT };
+static const char *al_en[] = {
+    [AL_ABOUT]     = "About Notepad",
+    [AL_NEW_MENU]  = "New    Ctrl+N",
+    [AL_OPEN_MENU] = "Open.. Ctrl+O",
+    [AL_SAVE_MENU] = "Save   Ctrl+S",
+};
+static const char *al_ru[] = {
+    [AL_ABOUT]     = "\xD0\x9E \xD0\x91\xD0\xBB\xD0\xBE\xD0\xBA\xD0\xBD\xD0\xBE\xD1\x82\xD0\xB5",
+    [AL_NEW_MENU]  = "\xD0\x9D\xD0\xBE\xD0\xB2\xD1\x8B\xD0\xB9  Ctrl+N",
+    [AL_OPEN_MENU] = "\xD0\x9E\xD1\x82\xD0\xBA\xD1\x80\xD1\x8B\xD1\x82\xD1\x8C  Ctrl+O",
+    [AL_SAVE_MENU] = "\xD0\xA1\xD0\xBE\xD1\x85\xD1\x80\xD0\xB0\xD0\xBD\xD0\xB8\xD1\x82\xD1\x8C Ctrl+S",
+};
+static const char *AL(int id) { return lang_get() == LANG_RU ? al_ru[id] : al_en[id]; }
+
 /* UART debug printf */
 #define dbg_printf(...) ((int(*)(const char*, ...))_sys_table_ptrs[438])(__VA_ARGS__)
 
@@ -121,13 +137,13 @@ static void np_setup_menu(hwnd_t hwnd) {
     strncpy(file->title, L(STR_FILE), sizeof(file->title) - 1);
     file->accel_key = 0x09; /* HID 'F' */
     file->item_count = 6;
-    strncpy(file->items[0].text, L(STR_NP_NEW_MENU), sizeof(file->items[0].text) - 1);
+    strncpy(file->items[0].text, AL(AL_NEW_MENU), sizeof(file->items[0].text) - 1);
     file->items[0].command_id = CMD_NEW;
     file->items[0].accel_key = 0x11;
-    strncpy(file->items[1].text, L(STR_NP_OPEN_MENU), sizeof(file->items[1].text) - 1);
+    strncpy(file->items[1].text, AL(AL_OPEN_MENU), sizeof(file->items[1].text) - 1);
     file->items[1].command_id = CMD_OPEN;
     file->items[1].accel_key = 0x12;
-    strncpy(file->items[2].text, L(STR_NP_SAVE_MENU), sizeof(file->items[2].text) - 1);
+    strncpy(file->items[2].text, AL(AL_SAVE_MENU), sizeof(file->items[2].text) - 1);
     file->items[2].command_id = CMD_SAVE;
     file->items[2].accel_key = 0x16;
     strncpy(file->items[3].text, L(STR_APP_SAVE_AS), sizeof(file->items[3].text) - 1);
@@ -1263,7 +1279,7 @@ static bool np_event(hwnd_t hwnd, const window_event_t *event) {
             return true;
         }
         else if (cmd == CMD_ABOUT) {
-            dialog_show(np.hwnd, L(STR_NP_ABOUT),
+            dialog_show(np.hwnd, AL(AL_ABOUT),
                         "Notepad\n\nFRANK OS v" FRANK_VERSION_STR
                         "\n(c) 2026 Mikhail Matveev\n"
                         "<xtreme@rh1.tech>\n"

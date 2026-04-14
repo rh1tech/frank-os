@@ -18,6 +18,12 @@
 #include "frankos-app.h"
 #include "lang.h"
 
+/* App-local translations */
+enum { AL_OPEN_ROM, AL_COUNT };
+static const char *al_en[] = { [AL_OPEN_ROM] = "Open a .nes ROM file from\nthe SD card." };
+static const char *al_ru[] = { [AL_OPEN_ROM] = "\xD0\x9E\xD1\x82\xD0\xBA\xD1\x80\xD0\xBE\xD0\xB9\xD1\x82\xD0\xB5 \xD1\x84\xD0\xB0\xD0\xB9\xD0\xBB .nes ROM\n\xD1\x81 SD-\xD0\xBA\xD0\xB0\xD1\x80\xD1\x82\xD1\x8B." };
+static const char *AL(int id) { return lang_get() == LANG_RU ? al_ru[id] : al_en[id]; }
+
 #undef switch
 #undef inline
 #undef __force_inline
@@ -269,7 +275,7 @@ int main(int argc, char **argv) {
     /* Check for ROM path argument — show dialog if launched without one */
     if (argc < 2 || !argv[1] || !argv[1][0]) {
         dialog_show(HWND_NULL, "Dendy",
-                    L(STR_DENDY_OPEN_ROM),
+                    AL(AL_OPEN_ROM),
                     DLG_ICON_INFO, DLG_BTN_OK);
         return 0;
     }

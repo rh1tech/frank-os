@@ -14,6 +14,16 @@
 #include "lang.h"
 #include <string.h>
 
+/* App-local translations */
+enum { AL_PING, AL_DNS, AL_HOST, AL_COUNT };
+static const char *al_en[] = { [AL_PING] = "Ping", [AL_DNS] = "DNS", [AL_HOST] = "Host:" };
+static const char *al_ru[] = {
+    [AL_PING] = "\xD0\x9F\xD0\xB8\xD0\xBD\xD0\xB3",
+    [AL_DNS]  = "DNS",
+    [AL_HOST] = "\xD0\xA5\xD0\xBE\xD1\x81\xD1\x82:",
+};
+static const char *AL(int id) { return lang_get() == LANG_RU ? al_ru[id] : al_en[id]; }
+
 /* ========================================================================
  * sys_table wrappers for network + debug API
  * ======================================================================== */
@@ -134,14 +144,14 @@ static void app_paint(hwnd_t hwnd) {
     wd_clear(THEME_BUTTON_FACE);
 
     /* Tabs */
-    draw_tab(4, TAB_TOP, TAB_W, TAB_H, L(STR_NT_PING), app.tab == TAB_PING);
-    draw_tab(4 + TAB_W + 2, TAB_TOP, TAB_W, TAB_H, L(STR_NT_DNS), app.tab == TAB_DNS);
+    draw_tab(4, TAB_TOP, TAB_W, TAB_H, AL(AL_PING), app.tab == TAB_PING);
+    draw_tab(4 + TAB_W + 2, TAB_TOP, TAB_W, TAB_H, AL(AL_DNS), app.tab == TAB_DNS);
 
     /* Tab content border */
     wd_hline(0, TAB_TOP + TAB_H, CLIENT_W, COLOR_WHITE);
 
     /* Label */
-    wd_text_ui(INPUT_X, LABEL_Y, L(STR_NT_HOST), COLOR_BLACK, THEME_BUTTON_FACE);
+    wd_text_ui(INPUT_X, LABEL_Y, AL(AL_HOST), COLOR_BLACK, THEME_BUTTON_FACE);
 
     /* Input field — sunken border + textarea */
     wd_bevel_rect(INPUT_X - 2, INPUT_Y - 2, INPUT_W + 4, INPUT_H + 4,
@@ -150,7 +160,7 @@ static void app_paint(hwnd_t hwnd) {
 
     /* Button */
     {
-        const char *btn_label = app.tab == TAB_PING ? L(STR_NT_PING) : L(STR_NT_DNS);
+        const char *btn_label = app.tab == TAB_PING ? AL(AL_PING) : AL(AL_DNS);
         bool enabled = !app.busy && textarea_get_length(&app.input_ta) > 0;
         bool pressed = app.btn_pressed == 0;
         wd_button(INPUT_X, BTN_Y, BTN_W, BTN_H, btn_label, false, pressed);

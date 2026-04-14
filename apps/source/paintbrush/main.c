@@ -207,7 +207,7 @@ static void pb_do_save_as(void) {
 static void pb_do_exit(void) { app_closing = true; wm_destroy_window(pb.hwnd); xTaskNotifyGive(app_task); }
 static void pb_prompt_save(uint8_t pending) {
     pb.pending_action = pending;
-    dialog_show(pb.hwnd, "Paintbrush", L(STR_PB_SAVE_CHANGES),
+    dialog_show(pb.hwnd, "Paintbrush", AL(AL_SAVE_CHANGES),
                 DLG_ICON_WARNING, DLG_BTN_YES | DLG_BTN_NO | DLG_BTN_CANCEL);
 }
 static void pb_resume_pending(void) {
@@ -219,9 +219,9 @@ static void pb_setup_menu(void) {
     menu_bar_t bar; memset(&bar, 0, sizeof(bar)); bar.menu_count = 4;
     menu_def_t *m;
     m = &bar.menus[0]; strncpy(m->title, L(STR_FILE), sizeof(m->title) - 1); m->accel_key = 0x09; m->item_count = 6;
-    strncpy(m->items[0].text, L(STR_NP_NEW_MENU), sizeof(m->items[0].text) - 1); m->items[0].command_id = CMD_NEW; m->items[0].accel_key = 0x11;
-    strncpy(m->items[1].text, L(STR_NP_OPEN_MENU), sizeof(m->items[1].text) - 1); m->items[1].command_id = CMD_OPEN; m->items[1].accel_key = 0x12;
-    strncpy(m->items[2].text, L(STR_NP_SAVE_MENU), sizeof(m->items[2].text) - 1); m->items[2].command_id = CMD_SAVE; m->items[2].accel_key = 0x16;
+    strncpy(m->items[0].text, AL(AL_NEW_MENU), sizeof(m->items[0].text) - 1); m->items[0].command_id = CMD_NEW; m->items[0].accel_key = 0x11;
+    strncpy(m->items[1].text, AL(AL_OPEN_MENU), sizeof(m->items[1].text) - 1); m->items[1].command_id = CMD_OPEN; m->items[1].accel_key = 0x12;
+    strncpy(m->items[2].text, AL(AL_SAVE_MENU), sizeof(m->items[2].text) - 1); m->items[2].command_id = CMD_SAVE; m->items[2].accel_key = 0x16;
     strncpy(m->items[3].text, L(STR_APP_SAVE_AS), sizeof(m->items[3].text) - 1); m->items[3].command_id = CMD_SAVE_AS;
     m->items[4].flags = MIF_SEPARATOR;
     strncpy(m->items[5].text, L(STR_FM_EXIT), sizeof(m->items[5].text) - 1); m->items[5].command_id = CMD_EXIT;
@@ -238,7 +238,7 @@ static void pb_setup_menu(void) {
     strncpy(m->items[5].text, L(STR_FM_SELALL_MENU), sizeof(m->items[5].text) - 1); m->items[5].command_id = CMD_SELECT_ALL; m->items[5].accel_key = 0x04;
     m->items[6].flags = MIF_SEPARATOR;
     strncpy(m->items[7].text, "Clear Image", 19); m->items[7].command_id = CMD_CLEAR;
-    m = &bar.menus[2]; strncpy(m->title, L(STR_PB_IMAGE), sizeof(m->title) - 1); m->accel_key = 0x0C; m->item_count = 3;
+    m = &bar.menus[2]; strncpy(m->title, AL(AL_IMAGE), sizeof(m->title) - 1); m->accel_key = 0x0C; m->item_count = 3;
     strncpy(m->items[0].text, "Flip Horiz.", 19); m->items[0].command_id = CMD_FLIP_H;
     strncpy(m->items[1].text, "Flip Vert.", 19); m->items[1].command_id = CMD_FLIP_V;
     strncpy(m->items[2].text, "Invert Colors", 19); m->items[2].command_id = CMD_INVERT;
@@ -574,7 +574,7 @@ static bool pb_event(hwnd_t hwnd, const window_event_t *ev) {
         if (cmd == CMD_SAVE) { pb_do_save(); return true; }
         if (cmd == CMD_SAVE_AS) { pb_do_save_as(); return true; }
         if (cmd == CMD_EXIT) { if (pb.modified) pb_prompt_save(PENDING_EXIT); else pb_do_exit(); return true; }
-        if (cmd == CMD_ABOUT) { dialog_show(hwnd, L(STR_PB_ABOUT), "Paintbrush\n\nFRANK OS v" FRANK_VERSION_STR "\n(c) 2026 Mikhail Matveev\n<xtreme@rh1.tech>\ngithub.com/rh1tech/frank-os", DLG_ICON_INFO, DLG_BTN_OK); return true; }
+        if (cmd == CMD_ABOUT) { dialog_show(hwnd, AL(AL_ABOUT), "Paintbrush\n\nFRANK OS v" FRANK_VERSION_STR "\n(c) 2026 Mikhail Matveev\n<xtreme@rh1.tech>\ngithub.com/rh1tech/frank-os", DLG_ICON_INFO, DLG_BTN_OK); return true; }
         if (cmd == CMD_CUT) { sel_cut(); pb_setup_menu(); wm_invalidate(hwnd); return true; }
         if (cmd == CMD_COPY) { sel_copy(); pb_setup_menu(); wm_invalidate(hwnd); return true; }
         if (cmd == CMD_PASTE) { sel_start_floating(); wm_invalidate(hwnd); return true; }

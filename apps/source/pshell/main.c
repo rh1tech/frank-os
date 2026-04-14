@@ -12,6 +12,13 @@
 #undef switch
 #include "frankos-app.h"
 #include "lang.h"
+
+/* App-local translations */
+enum { AL_ABOUT, AL_COUNT };
+static const char *al_en[] = { [AL_ABOUT] = "About PShell" };
+static const char *al_ru[] = { [AL_ABOUT] = "\xD0\x9E PShell" };
+static const char *AL(int id) { return lang_get() == LANG_RU ? al_ru[id] : al_en[id]; }
+
 #include "pshell_vt100.h"
 #include "cc/cc.h"
 
@@ -96,7 +103,7 @@ static bool pshell_event(hwnd_t hwnd, const window_event_t *event) {
             return true;
         }
         if (event->command.id == CMD_ABOUT) {
-            dialog_show(hwnd, L(STR_PS_ABOUT),
+            dialog_show(hwnd, AL(AL_ABOUT),
                         "PShell\n\nFRANK OS v" FRANK_VERSION_STR
                         "\nPico Shell: shell, vi, C compiler\n"
                         "Based on pshell by Thomas Edison\n"

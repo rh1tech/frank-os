@@ -10,6 +10,12 @@
 #include "frankos-app.h"
 #include "lang.h"
 
+/* App-local translations */
+enum { AL_ABOUT, AL_COUNT };
+static const char *al_en[] = { [AL_ABOUT] = "About Calculator" };
+static const char *al_ru[] = { [AL_ABOUT] = "\xD0\x9E \xD0\x9A\xD0\xB0\xD0\xBB\xD1\x8C\xD0\xBA\xD1\x83\xD0\xBB\xD1\x8F\xD1\x82\xD0\xBE\xD1\x80\xD0\xB5" };
+static const char *AL(int id) { return lang_get() == LANG_RU ? al_ru[id] : al_en[id]; }
+
 #define dbg_printf(...) ((int(*)(const char*, ...))_sys_table_ptrs[438])(__VA_ARGS__)
 
 /*==========================================================================
@@ -495,7 +501,7 @@ static hwnd_t calc_create(void) {
     /* Copy const data to RAM (paint/event handlers in .text may not
      * see .rodata correctly due to ELF loader relocation issues) */
     memcpy(c->labels, labels_src, sizeof(c->labels));
-    strncpy(c->about_title, L(STR_CALC_ABOUT), sizeof(c->about_title) - 1);
+    strncpy(c->about_title, AL(AL_ABOUT), sizeof(c->about_title) - 1);
     c->about_title[sizeof(c->about_title) - 1] = '\0';
     snprintf(c->about_text, sizeof(c->about_text),
              "Calculator\n\nFRANK OS v" FRANK_VERSION_STR

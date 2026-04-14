@@ -20,7 +20,7 @@
 #define MENU_MAX_ITEMS    8    /* max items per dropdown */
 #define MENU_POPUP_MAX   12   /* max items in a popup/context menu */
 #define MENU_MAX_MENUS    5    /* max top-level menus per window */
-#define MENU_MAX_BARS    16    /* one per window slot */
+#define MENU_MAX_BARS    12    /* one per window slot (reduced for UTF-8 menu sizes) */
 
 /* Item flags */
 #define MIF_SEPARATOR    (1u << 0)
@@ -28,14 +28,14 @@
 #define MIF_SUBMENU      (1u << 2)
 
 typedef struct {
-    char     text[20];       /* display text */
+    char     text[24];       /* display text (UTF-8, ~11 Cyrillic + shortcut) */
     uint16_t command_id;     /* WM_COMMAND id sent to window */
     uint8_t  flags;          /* MIF_* flags */
     uint8_t  accel_key;      /* HID code for Alt+key shortcut (0=none) */
 } menu_item_t;
 
 typedef struct {
-    char        title[12];   /* top-level menu title (e.g. "File") */
+    char        title[16];   /* top-level menu title (UTF-8, ~7 Cyrillic) */
     uint8_t     accel_key;   /* HID code for Alt+letter (0=none) */
     uint8_t     item_count;
     menu_item_t items[MENU_MAX_ITEMS];

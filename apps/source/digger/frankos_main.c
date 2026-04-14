@@ -14,6 +14,12 @@
 #include "frankos-app.h"
 #include "lang.h"
 
+/* App-local translations */
+enum { AL_GAME, AL_COUNT };
+static const char *al_en[] = { [AL_GAME] = "Game" };
+static const char *al_ru[] = { [AL_GAME] = "\xD0\x98\xD0\xB3\xD1\x80\xD0\xB0" };
+static const char *AL(int id) { return lang_get() == LANG_RU ? al_ru[id] : al_en[id]; }
+
 #undef switch
 #undef inline
 #undef __force_inline
@@ -83,7 +89,7 @@ void digger_setup_menu(void) {
 
     /* Game menu */
     menu_def_t *game = &bar.menus[0];
-    strncpy(game->title, L(STR_MS_GAME), sizeof(game->title) - 1);
+    strncpy(game->title, AL(AL_GAME), sizeof(game->title) - 1);
     game->accel_key = 0x0A; /* Alt+G */
     game->item_count = 6;
 

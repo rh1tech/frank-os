@@ -219,76 +219,16 @@ static const char *str_en[] = {
     [STR_APP_PASTE]        = "Paste",
     [STR_APP_SELECT_ALL]   = "Select All",
 
-    /* Notepad */
-    [STR_NP_NEW_MENU]      = "New    Ctrl+N",
-    [STR_NP_OPEN_MENU]     = "Open.. Ctrl+O",
-    [STR_NP_SAVE_MENU]     = "Save   Ctrl+S",
-    [STR_NP_ABOUT]         = "About Notepad",
 
-    /* Paintbrush */
-    [STR_PB_TOOLS]         = "Tools",
-    [STR_PB_IMAGE]         = "Image",
-    [STR_PB_ABOUT]         = "About Paintbrush",
-    [STR_PB_SAVE_CHANGES]  = "The image has been changed.\nDo you want to save the changes?",
 
-    /* Minesweeper */
-    [STR_MS_GAME]          = "Game",
-    [STR_MS_NEW]           = "New        F2",
-    [STR_MS_BEGINNER]      = "Beginner",
-    [STR_MS_INTERMEDIATE]  = "Intermediate",
-    [STR_MS_EXPERT]        = "Expert",
-    [STR_MS_ABOUT]         = "About Minesweeper",
 
-    /* Solitaire */
-    [STR_SOL_NEW_GAME]     = "New Game   F2",
-    [STR_SOL_DRAW_ONE]     = "Draw One",
-    [STR_SOL_DRAW_THREE]   = "Draw Three",
-    [STR_SOL_CONGRATS]     = "Congratulations!",
-    [STR_SOL_CONGRATS_MSG] = "You won!",
-    [STR_SOL_ABOUT]        = "About Solitaire",
 
-    /* Calculator */
-    [STR_CALC_ABOUT]       = "About Calculator",
 
-    /* FrankAmp */
-    [STR_FA_MUSIC]         = "Music",
-    [STR_FA_PLAY]          = "Play",
-    [STR_FA_PAUSE]         = "Pause",
-    [STR_FA_STOP]          = "Stop",
-    [STR_FA_NEXT_TRACK]    = "Next Track",
-    [STR_FA_PREV_TRACK]    = "Previous Track",
-    [STR_FA_OPEN_AUDIO]    = "Open Audio",
-    [STR_FA_ABOUT]         = "About FrankAmp",
 
-    /* Manul browser */
-    [STR_MN_NAVIGATE]      = "Navigate",
-    [STR_MN_BACK]          = "Back     Alt+<",
-    [STR_MN_FORWARD]       = "Forward  Alt+>",
-    [STR_MN_STOP]          = "Stop       Esc",
-    [STR_MN_RELOAD]        = "Reload      F5",
-    [STR_MN_NEXT_LINK]     = "Next link  Tab",
-    [STR_MN_PREV_LINK]     = "Prev link S+Tb",
-    [STR_MN_ABOUT]         = "About Manul",
 
-    /* NetTools */
-    [STR_NT_PING]          = "Ping",
-    [STR_NT_DNS]           = "DNS",
-    [STR_NT_HOST]          = "Host:",
 
-    /* Kickstart */
-    [STR_KS_LAUNCH_FW]    = "Launch Firmware",
-    [STR_KS_FLASH_FW]     = "Flash Firmware",
-    [STR_KS_ABOUT]        = "About Kickstart",
 
-    /* Video Player */
-    [STR_VP_OPEN_VIDEO]    = "Open a .mpg or .str video\nfile from the SD card.",
-    [STR_VP_NO_MEMORY]     = "Not enough memory.",
-    [STR_VP_CANNOT_OPEN]   = "Cannot open file.",
 
-    /* ZX Spectrum / Dendy / PShell */
-    [STR_ZX_ABOUT]         = "About ZX Spectrum",
-    [STR_DENDY_OPEN_ROM]   = "Open a .nes ROM file from\nthe SD card.",
-    [STR_PS_ABOUT]         = "About PShell",
 };
 
 /* Russian string table (Win1251 encoded) */
@@ -501,76 +441,16 @@ static const char *str_ru[] = {
     [STR_APP_PASTE]        = "Вставить",
     [STR_APP_SELECT_ALL]   = "Выделить всё",
 
-    /* Notepad */
-    [STR_NP_NEW_MENU]      = "Новый  Ctrl+N",
-    [STR_NP_OPEN_MENU]     = "Откр.  Ctrl+O",
-    [STR_NP_SAVE_MENU]     = "Сохр.  Ctrl+S",
-    [STR_NP_ABOUT]         = "О Блокноте",
 
-    /* Paintbrush */
-    [STR_PB_TOOLS]         = "Инструменты",
-    [STR_PB_IMAGE]         = "Изображение",
-    [STR_PB_ABOUT]         = "О программе Paintbrush",
-    [STR_PB_SAVE_CHANGES]  = "Изображение изменено.\nСохранить изменения?",
 
-    /* Minesweeper */
-    [STR_MS_GAME]          = "Игра",
-    [STR_MS_NEW]           = "Новая      F2",
-    [STR_MS_BEGINNER]      = "Новичок",
-    [STR_MS_INTERMEDIATE]  = "Любитель",
-    [STR_MS_EXPERT]        = "Эксперт",
-    [STR_MS_ABOUT]         = "О программе Сапёр",
 
-    /* Solitaire */
-    [STR_SOL_NEW_GAME]     = "Новая игра F2",
-    [STR_SOL_DRAW_ONE]     = "По одной",
-    [STR_SOL_DRAW_THREE]   = "По три",
-    [STR_SOL_CONGRATS]     = "Поздравляем!",
-    [STR_SOL_CONGRATS_MSG] = "Вы выиграли!",
-    [STR_SOL_ABOUT]        = "О программе Пасьянс",
 
-    /* Calculator */
-    [STR_CALC_ABOUT]       = "О Калькуляторе",
 
-    /* FrankAmp */
-    [STR_FA_MUSIC]         = "Музыка",
-    [STR_FA_PLAY]          = "Воспроизвести",
-    [STR_FA_PAUSE]         = "Пауза",
-    [STR_FA_STOP]          = "Стоп",
-    [STR_FA_NEXT_TRACK]    = "След. трек",
-    [STR_FA_PREV_TRACK]    = "Пред. трек",
-    [STR_FA_OPEN_AUDIO]    = "Открыть аудио",
-    [STR_FA_ABOUT]         = "О FrankAmp",
 
-    /* Manul browser */
-    [STR_MN_NAVIGATE]      = "Навигация",
-    [STR_MN_BACK]          = "Назад    Alt+<",
-    [STR_MN_FORWARD]       = "Вперёд   Alt+>",
-    [STR_MN_STOP]          = "Стоп       Esc",
-    [STR_MN_RELOAD]        = "Обновить    F5",
-    [STR_MN_NEXT_LINK]     = "След. ссылка Tab",
-    [STR_MN_PREV_LINK]     = "Пред. ссылка S+Tb",
-    [STR_MN_ABOUT]         = "О Manul",
 
-    /* NetTools */
-    [STR_NT_PING]          = "Пинг",
-    [STR_NT_DNS]           = "DNS",
-    [STR_NT_HOST]          = "Хост:",
 
-    /* Kickstart */
-    [STR_KS_LAUNCH_FW]    = "Запуск прошивки",
-    [STR_KS_FLASH_FW]     = "Прошить",
-    [STR_KS_ABOUT]        = "О Kickstart",
 
-    /* Video Player */
-    [STR_VP_OPEN_VIDEO]    = "Откройте файл .mpg или .str\nс SD-карты.",
-    [STR_VP_NO_MEMORY]     = "Недостаточно памяти.",
-    [STR_VP_CANNOT_OPEN]   = "Не удалось открыть файл.",
 
-    /* ZX Spectrum / Dendy / PShell */
-    [STR_ZX_ABOUT]         = "О ZX Spectrum",
-    [STR_DENDY_OPEN_ROM]   = "Откройте файл .nes ROM\nс SD-карты.",
-    [STR_PS_ABOUT]         = "О PShell",
 };
 
 uint8_t lang_get(void) {

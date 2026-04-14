@@ -19,6 +19,12 @@
 #include "frankos-app.h"
 #include "lang.h"
 
+/* App-local translations */
+enum { AL_ABOUT, AL_COUNT };
+static const char *al_en[] = { [AL_ABOUT] = "About ZX Spectrum" };
+static const char *al_ru[] = { [AL_ABOUT] = "\xD0\x9E ZX Spectrum" };
+static const char *AL(int id) { return lang_get() == LANG_RU ? al_ru[id] : al_en[id]; }
+
 /*
  * m-os-api.h defines:
  *   #define switch DO_NOT_USE_SWITCH
@@ -656,7 +662,7 @@ static bool handle_menu_command(hwnd_t hwnd, app_globals_t *g, int command_id) {
         return true;
     }
     if (command_id == CMD_ABOUT) {
-        dialog_show(hwnd, L(STR_ZX_ABOUT),
+        dialog_show(hwnd, AL(AL_ABOUT),
                     "ZX Spectrum\n\nFRANK OS v" FRANK_VERSION_STR
                     "\n(c) 2026 Mikhail Matveev\n"
                     "<xtreme@rh1.tech>\n"

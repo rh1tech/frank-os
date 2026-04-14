@@ -17,6 +17,20 @@
 #include "frankos-app.h"
 #include "lang.h"
 
+/* App-local translations */
+enum { AL_OPEN_VIDEO, AL_NO_MEMORY, AL_CANNOT_OPEN, AL_COUNT };
+static const char *al_en[] = {
+    [AL_OPEN_VIDEO]  = "Open a .mpg or .str video\nfile from the SD card.",
+    [AL_NO_MEMORY]   = "Not enough memory.",
+    [AL_CANNOT_OPEN] = "Cannot open file.",
+};
+static const char *al_ru[] = {
+    [AL_OPEN_VIDEO]  = "\xD0\x9E\xD1\x82\xD0\xBA\xD1\x80\xD0\xBE\xD0\xB9\xD1\x82\xD0\xB5 \xD1\x84\xD0\xB0\xD0\xB9\xD0\xBB .mpg \xD0\xB8\xD0\xBB\xD0\xB8 .str\n\xD1\x81 SD-\xD0\xBA\xD0\xB0\xD1\x80\xD1\x82\xD1\x8B.",
+    [AL_NO_MEMORY]   = "\xD0\x9D\xD0\xB5\xD0\xB4\xD0\xBE\xD1\x81\xD1\x82\xD0\xB0\xD1\x82\xD0\xBE\xD1\x87\xD0\xBD\xD0\xBE \xD0\xBF\xD0\xB0\xD0\xBC\xD1\x8F\xD1\x82\xD0\xB8.",
+    [AL_CANNOT_OPEN] = "\xD0\x9D\xD0\xB5 \xD1\x83\xD0\xB4\xD0\xB0\xD0\xBB\xD0\xBE\xD1\x81\xD1\x8C \xD0\xBE\xD1\x82\xD0\xBA\xD1\x80\xD1\x8B\xD1\x82\xD1\x8C \xD1\x84\xD0\xB0\xD0\xB9\xD0\xBB.",
+};
+static const char *AL(int id) { return lang_get() == LANG_RU ? al_ru[id] : al_en[id]; }
+
 #undef switch
 #undef inline
 #undef __force_inline
@@ -460,7 +474,7 @@ static void process_input(void) {
 int main(int argc, char **argv) {
     if (argc < 2 || !argv[1] || !argv[1][0]) {
         dialog_show(HWND_NULL, "Video Player",
-                    L(STR_VP_OPEN_VIDEO),
+                    AL(AL_OPEN_VIDEO),
                     DLG_ICON_INFO, DLG_BTN_OK);
         return 0;
     }
@@ -479,7 +493,7 @@ int main(int argc, char **argv) {
 
     app_globals_t *globals = (app_globals_t *)pvPortMalloc(sizeof(app_globals_t));
     if (!globals) {
-        dialog_show(HWND_NULL, "Video Player", L(STR_VP_NO_MEMORY),
+        dialog_show(HWND_NULL, "Video Player", AL(AL_NO_MEMORY),
                     DLG_ICON_ERROR, DLG_BTN_OK);
         return 1;
     }
@@ -501,7 +515,7 @@ int main(int argc, char **argv) {
     /* Open file */
     G->fil = (FIL *)pvPortMalloc(sizeof(FIL));
     if (!G->fil || f_open(G->fil, argv[1], FA_READ) != FR_OK) {
-        dialog_show(HWND_NULL, "Video Player", L(STR_VP_CANNOT_OPEN),
+        dialog_show(HWND_NULL, "Video Player", AL(AL_CANNOT_OPEN),
                     DLG_ICON_ERROR, DLG_BTN_OK);
         if (G->fil) vPortFree(G->fil);
         vPortFree(globals);
@@ -511,7 +525,7 @@ int main(int argc, char **argv) {
     /* Allocate shared audio buffer (used by both paths) */
     G->audio_buf = (int16_t *)pvPortMalloc(AUDIO_BUF_SAMPLES * 2 * sizeof(int16_t));
     if (!G->audio_buf) {
-        dialog_show(HWND_NULL, "Video Player", L(STR_VP_NO_MEMORY),
+        dialog_show(HWND_NULL, "Video Player", AL(AL_NO_MEMORY),
                     DLG_ICON_ERROR, DLG_BTN_OK);
         f_close(G->fil); vPortFree(G->fil); vPortFree(globals);
         return 1;

@@ -10,6 +10,26 @@
 #include "frankos-app.h"
 #include "lang.h"
 
+/* App-local translations */
+enum { AL_GAME, AL_NEW, AL_BEGINNER, AL_INTERMEDIATE, AL_EXPERT, AL_ABOUT, AL_COUNT };
+static const char *al_en[] = {
+    [AL_GAME]         = "Game",
+    [AL_NEW]          = "New        F2",
+    [AL_BEGINNER]     = "Beginner",
+    [AL_INTERMEDIATE] = "Intermediate",
+    [AL_EXPERT]       = "Expert",
+    [AL_ABOUT]        = "About Minesweeper",
+};
+static const char *al_ru[] = {
+    [AL_GAME]         = "\xD0\x98\xD0\xB3\xD1\x80\xD0\xB0",
+    [AL_NEW]          = "\xD0\x9D\xD0\xBE\xD0\xB2\xD0\xB0\xD1\x8F      F2",
+    [AL_BEGINNER]     = "\xD0\x9D\xD0\xBE\xD0\xB2\xD0\xB8\xD1\x87\xD0\xBE\xD0\xBA",
+    [AL_INTERMEDIATE] = "\xD0\x9B\xD1\x8E\xD0\xB1\xD0\xB8\xD1\x82\xD0\xB5\xD0\xBB\xD1\x8C",
+    [AL_EXPERT]       = "\xD0\xAD\xD0\xBA\xD1\x81\xD0\xBF\xD0\xB5\xD1\x80\xD1\x82",
+    [AL_ABOUT]        = "\xD0\x9E \xD0\xA1\xD0\xB0\xD0\xBF\xD1\x91\xD1\x80\xD0\xB5",
+};
+static const char *AL(int id) { return lang_get() == LANG_RU ? al_ru[id] : al_en[id]; }
+
 /* UART debug printf — sys_table[438] is the OS's printf (UART-backed).
  * The app's own printf goes to a pico SDK no-op (UART stdio disabled). */
 #define dbg_printf(...) ((int(*)(const char*, ...))_sys_table_ptrs[438])(__VA_ARGS__)
@@ -847,7 +867,7 @@ static bool ms_event(hwnd_t hwnd, const window_event_t *ev) {
             return true;
         }
         if (ev->command.id == CMD_ABOUT) {
-            dialog_show(hwnd, L(STR_MS_ABOUT),
+            dialog_show(hwnd, AL(AL_ABOUT),
                         "Minesweeper\n\nFRANK OS v" FRANK_VERSION_STR
                         "\n(c) 2026 Mikhail Matveev\n"
                         "<xtreme@rh1.tech>\n"
@@ -902,23 +922,23 @@ static void setup_menu(hwnd_t hwnd) {
 
     /* Game menu */
     menu_def_t *game = &bar.menus[0];
-    strncpy(game->title, L(STR_MS_GAME), sizeof(game->title) - 1);
+    strncpy(game->title, AL(AL_GAME), sizeof(game->title) - 1);
     game->accel_key = 0x0A; /* HID 'G' */
     game->item_count = 7;
 
-    strncpy(game->items[0].text, L(STR_MS_NEW), sizeof(game->items[0].text) - 1);
+    strncpy(game->items[0].text, AL(AL_NEW), sizeof(game->items[0].text) - 1);
     game->items[0].command_id = CMD_NEW;
     game->items[0].accel_key = 0x3B; /* F2 */
 
     game->items[1].flags = MIF_SEPARATOR;
 
-    strncpy(game->items[2].text, L(STR_MS_BEGINNER), sizeof(game->items[2].text) - 1);
+    strncpy(game->items[2].text, AL(AL_BEGINNER), sizeof(game->items[2].text) - 1);
     game->items[2].command_id = CMD_BEGINNER;
 
-    strncpy(game->items[3].text, L(STR_MS_INTERMEDIATE), sizeof(game->items[3].text) - 1);
+    strncpy(game->items[3].text, AL(AL_INTERMEDIATE), sizeof(game->items[3].text) - 1);
     game->items[3].command_id = CMD_INTERMEDIATE;
 
-    strncpy(game->items[4].text, L(STR_MS_EXPERT), sizeof(game->items[4].text) - 1);
+    strncpy(game->items[4].text, AL(AL_EXPERT), sizeof(game->items[4].text) - 1);
     game->items[4].command_id = CMD_EXPERT;
 
     game->items[5].flags = MIF_SEPARATOR;

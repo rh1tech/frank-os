@@ -10,6 +10,28 @@
 #include "frankos-app.h"
 #include "lang.h"
 
+/* App-local translations */
+enum { AL_NEW_GAME, AL_DRAW_ONE, AL_DRAW_THREE, AL_CONGRATS, AL_CONGRATS_MSG, AL_ABOUT, AL_GAME, AL_COUNT };
+static const char *al_en[] = {
+    [AL_NEW_GAME]    = "New Game   F2",
+    [AL_DRAW_ONE]    = "Draw One",
+    [AL_DRAW_THREE]  = "Draw Three",
+    [AL_CONGRATS]    = "Congratulations!",
+    [AL_CONGRATS_MSG]= "You won!",
+    [AL_ABOUT]       = "About Solitaire",
+    [AL_GAME]        = "Game",
+};
+static const char *al_ru[] = {
+    [AL_NEW_GAME]    = "\xD0\x9D\xD0\xBE\xD0\xB2\xD0\xB0\xD1\x8F \xD0\xB8\xD0\xB3\xD1\x80\xD0\xB0 F2",
+    [AL_DRAW_ONE]    = "\xD0\x9F\xD0\xBE \xD0\xBE\xD0\xB4\xD0\xBD\xD0\xBE\xD0\xB9",
+    [AL_DRAW_THREE]  = "\xD0\x9F\xD0\xBE \xD1\x82\xD1\x80\xD0\xB8",
+    [AL_CONGRATS]    = "\xD0\x9F\xD0\xBE\xD0\xB7\xD0\xB4\xD1\x80\xD0\xB0\xD0\xB2\xD0\xBB\xD1\x8F\xD0\xB5\xD0\xBC!",
+    [AL_CONGRATS_MSG]= "\xD0\x92\xD1\x8B \xD0\xB2\xD1\x8B\xD0\xB8\xD0\xB3\xD1\x80\xD0\xB0\xD0\xBB\xD0\xB8!",
+    [AL_ABOUT]       = "\xD0\x9E \xD0\x9F\xD0\xB0\xD1\x81\xD1\x8C\xD1\x8F\xD0\xBD\xD1\x81\xD0\xB5",
+    [AL_GAME]        = "\xD0\x98\xD0\xB3\xD1\x80\xD0\xB0",
+};
+static const char *AL(int id) { return lang_get() == LANG_RU ? al_ru[id] : al_en[id]; }
+
 /* UART debug printf */
 #define dbg_printf(...) ((int(*)(const char*, ...))_sys_table_ptrs[438])(__VA_ARGS__)
 
@@ -561,8 +583,8 @@ static void check_win(sol_state_t *st) {
         if (st->timer)
             xTimerStop(st->timer, 0);
         wm_invalidate(st->hwnd);
-        dialog_show(st->hwnd, L(STR_SOL_CONGRATS),
-                    L(STR_SOL_CONGRATS_MSG),
+        dialog_show(st->hwnd, AL(AL_CONGRATS),
+                    AL(AL_CONGRATS_MSG),
                     DLG_ICON_INFO, DLG_BTN_OK);
     }
 }
@@ -1466,7 +1488,7 @@ static bool sol_event(hwnd_t hwnd, const window_event_t *ev) {
             return true;
         }
         if (ev->command.id == CMD_ABOUT) {
-            dialog_show(hwnd, L(STR_SOL_ABOUT),
+            dialog_show(hwnd, AL(AL_ABOUT),
                         "Solitaire\n\nFRANK OS v" FRANK_VERSION_STR
                         "\n(c) 2026 Mikhail Matveev\n"
                         "<xtreme@rh1.tech>\n"
@@ -1518,22 +1540,22 @@ static void setup_menu(hwnd_t hwnd, sol_state_t *st) {
 
     /* Game menu */
     menu_def_t *game = &bar.menus[0];
-    strncpy(game->title, L(STR_MS_GAME), sizeof(game->title) - 1);
+    strncpy(game->title, AL(AL_GAME), sizeof(game->title) - 1);
     game->accel_key = 0x0A; /* HID 'G' */
     game->item_count = 6;
 
-    strncpy(game->items[0].text, L(STR_SOL_NEW_GAME), sizeof(game->items[0].text) - 1);
+    strncpy(game->items[0].text, AL(AL_NEW_GAME), sizeof(game->items[0].text) - 1);
     game->items[0].command_id = CMD_NEW;
     game->items[0].accel_key = 0x3B; /* F2 */
 
     game->items[1].flags = MIF_SEPARATOR;
 
     snprintf(game->items[2].text, sizeof(game->items[2].text),
-             "%s %s", st->draw_mode == 1 ? "*" : " ", L(STR_SOL_DRAW_ONE));
+             "%s %s", st->draw_mode == 1 ? "*" : " ", AL(AL_DRAW_ONE));
     game->items[2].command_id = CMD_DRAW_ONE;
 
     snprintf(game->items[3].text, sizeof(game->items[3].text),
-             "%s %s", st->draw_mode == 3 ? "*" : " ", L(STR_SOL_DRAW_THREE));
+             "%s %s", st->draw_mode == 3 ? "*" : " ", AL(AL_DRAW_THREE));
     game->items[3].command_id = CMD_DRAW_THREE;
 
     game->items[4].flags = MIF_SEPARATOR;

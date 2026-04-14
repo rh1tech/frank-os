@@ -15,6 +15,28 @@
 
 #define dbg_printf(...) ((int(*)(const char*, ...))_sys_table_ptrs[438])(__VA_ARGS__)
 
+/* App-local translations */
+enum { AL_ABOUT, AL_TOOLS, AL_IMAGE, AL_SAVE_CHANGES, AL_NEW_MENU, AL_OPEN_MENU, AL_SAVE_MENU, AL_COUNT };
+static const char *al_en[] = {
+    [AL_ABOUT]        = "About Paintbrush",
+    [AL_TOOLS]        = "Tools",
+    [AL_IMAGE]        = "Image",
+    [AL_SAVE_CHANGES] = "The image has been changed.\nDo you want to save the changes?",
+    [AL_NEW_MENU]     = "New    Ctrl+N",
+    [AL_OPEN_MENU]    = "Open.. Ctrl+O",
+    [AL_SAVE_MENU]    = "Save   Ctrl+S",
+};
+static const char *al_ru[] = {
+    [AL_ABOUT]        = "\xD0\x9E Paintbrush",
+    [AL_TOOLS]        = "\xD0\x98\xD0\xBD\xD1\x81\xD1\x82\xD1\x80\xD1\x83\xD0\xBC\xD0\xB5\xD0\xBD\xD1\x82\xD1\x8B",
+    [AL_IMAGE]        = "\xD0\x98\xD0\xB7\xD0\xBE\xD0\xB1\xD1\x80\xD0\xB0\xD0\xB6\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5",
+    [AL_SAVE_CHANGES] = "\xD0\x98\xD0\xB7\xD0\xBE\xD0\xB1\xD1\x80\xD0\xB0\xD0\xB6\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5 \xD0\xB8\xD0\xB7\xD0\xBC\xD0\xB5\xD0\xBD\xD0\xB5\xD0\xBD\xD0\xBE.\n\xD0\xA1\xD0\xBE\xD1\x85\xD1\x80\xD0\xB0\xD0\xBD\xD0\xB8\xD1\x82\xD1\x8C \xD0\xB8\xD0\xB7\xD0\xBC\xD0\xB5\xD0\xBD\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F?",
+    [AL_NEW_MENU]     = "\xD0\x9D\xD0\xBE\xD0\xB2\xD1\x8B\xD0\xB9  Ctrl+N",
+    [AL_OPEN_MENU]    = "\xD0\x9E\xD1\x82\xD0\xBA\xD1\x80\xD1\x8B\xD1\x82\xD1\x8C  Ctrl+O",
+    [AL_SAVE_MENU]    = "\xD0\xA1\xD0\xBE\xD1\x85\xD1\x80\xD0\xB0\xD0\xBD\xD0\xB8\xD1\x82\xD1\x8C Ctrl+S",
+};
+static inline const char *AL(int id) { return lang_get() == LANG_RU ? al_ru[id] : al_en[id]; }
+
 /*==========================================================================
  * Canvas defaults
  *=========================================================================*/
