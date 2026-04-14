@@ -751,7 +751,7 @@ hwnd_t dialog_input_show(hwnd_t parent, const char *title,
     dlg_btn_pressed = -1;
 
     /* Layout */
-    int prompt_w = (int)strlen(prompt) * FONT_UI_WIDTH + 24;
+    int prompt_w = gfx_utf8_charcount(prompt) * FONT_UI_WIDTH + 24;
     int field_w = input_max * FONT_UI_WIDTH + 12;
     if (field_w < 200) field_w = 200;
 

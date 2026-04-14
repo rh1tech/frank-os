@@ -62,6 +62,12 @@ typedef struct kbd_state {
 
 kbd_state_t *get_kbd_state(void);
 
+/* Language input: true if currently typing in Russian */
+bool keyboard_is_russian(void);
+
+/* Toggle input language (EN ↔ RU). Only works when language != English. */
+void keyboard_toggle_input(void);
+
 // MOS2 keyboard API compatibility stubs
 typedef bool (*scancode_handler_t)(const uint32_t);
 typedef bool (*cp866_handler_t)(const char, uint32_t);

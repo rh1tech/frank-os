@@ -1352,7 +1352,7 @@ bool checkbox_event(checkbox_t *cb, const window_event_t *event,
     if (event->type != WM_LBUTTONDOWN) return false;
     int16_t mx = event->mouse.x;
     int16_t my = event->mouse.y;
-    int16_t label_w = (int16_t)(strlen(cb->label) * FONT_UI_WIDTH);
+    int16_t label_w = gfx_utf8_charcount(cb->label) * FONT_UI_WIDTH;
     int16_t hit_w = CHECKBOX_SIZE + 4 + label_w;
     if (mx >= cb->x && mx < cb->x + hit_w &&
         my >= cb->y && my < cb->y + CHECKBOX_SIZE) {

@@ -72,7 +72,7 @@ extern const uint8_t icon_info_32x32[1024];
 #define RD_FIELD_RIGHT  (RD_CLIENT_W - 8)  /* right edge of field + dropdown */
 /* Compute field X at runtime to accommodate longer labels */
 static inline int rd_field_x(void) {
-    int lw = (int)strlen(L(STR_OPEN_LABEL)) * FONT_UI_WIDTH + 4;
+    int lw = gfx_utf8_charcount(L(STR_OPEN_LABEL)) * FONT_UI_WIDTH + 4;
     int fx = RD_LABEL_X + lw;
     if (fx < RD_FIELD_X_BASE) fx = RD_FIELD_X_BASE;
     return fx;

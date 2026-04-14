@@ -653,7 +653,7 @@ static void fm_paint_statusbar(filemanager_t *fm, int16_t cw, int16_t ch) {
 
     int rp_w = 0, rp_x = 0;
     if (right[0]) {
-        rp_w = (int)strlen(right) * FONT_UI_WIDTH + 8;
+        rp_w = gfx_utf8_charcount(right) * FONT_UI_WIDTH + 8;
         rp_x = cw - rp_w - 2;
         wd_hline(rp_x, panel_y, rp_w, COLOR_DARK_GRAY);
         wd_vline(rp_x, panel_y, panel_h, COLOR_DARK_GRAY);
@@ -745,7 +745,7 @@ static void fm_paint_large_icons(filemanager_t *fm, int16_t cw, int16_t ch) {
         /* Filename (ellipsis-truncated to fit cell width) */
         char label[32];
         fm_ellipsis(label, sizeof(label), e->name, LARGE_CELL_W - 4);
-        int tw = (int)strlen(label) * FONT_UI_WIDTH;
+        int tw = gfx_utf8_charcount(label) * FONT_UI_WIDTH;
         int tx = cx + (LARGE_CELL_W - tw) / 2;
 
         uint8_t fg = selected ? COLOR_WHITE : (dimmed ? COLOR_DARK_GRAY : COLOR_BLACK);
@@ -995,7 +995,7 @@ static void fm_paint(hwnd_t hwnd) {
                 window_t *win = wm_get_window(hwnd);
                 if (win) {
                     point_t co = theme_client_origin(&win->frame, win->flags);
-                    int tw = (int)strlen(tip) * FONT_UI_WIDTH;
+                    int tw = gfx_utf8_charcount(tip) * FONT_UI_WIDTH;
                     int ph = FONT_UI_HEIGHT + 4;
                     int pw = tw + 6;
                     int sx = co.x + tb_btn_x(fm->tooltip_btn);
@@ -1257,7 +1257,7 @@ static void fm_show_progress(const char *label, int percent) {
     gfx_vline(bx + bw - 1, by, bh, COLOR_DARK_GRAY);
 
     /* Centered message */
-    int tw = (int)strlen(msg) * FONT_UI_WIDTH;
+    int tw = gfx_utf8_charcount(msg) * FONT_UI_WIDTH;
     gfx_text_ui(bx + (bw - tw) / 2, by + (bh - FONT_UI_HEIGHT) / 2,
                 msg, COLOR_BLACK, THEME_BUTTON_FACE);
 

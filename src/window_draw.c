@@ -203,8 +203,9 @@ void wd_bevel_rect(int16_t x, int16_t y, int16_t w, int16_t h,
 
 void wd_char_ui(int16_t x, int16_t y, char c, uint8_t fg, uint8_t bg) {
     if (!draw_ctx.active) return;
-    char s[2] = { c, '\0' };
-    gfx_text_ui_clipped(draw_ctx.ox + x, draw_ctx.oy + y, s, fg, bg,
+    /* Render single glyph directly — c is a Win1251 byte (legacy API).
+     * Don't go through gfx_text_ui_clipped to avoid UTF-8 decode confusion. */
+    gfx_char_ui_clipped(draw_ctx.ox + x, draw_ctx.oy + y, c, fg, bg,
                          draw_ctx.ox, draw_ctx.oy, draw_ctx.cw, draw_ctx.ch);
 }
 
@@ -273,7 +274,7 @@ void wd_button(int16_t x, int16_t y, int16_t w, int16_t h,
 
     /* Center label — offset +1px when pressed */
     int off = pressed ? 1 : 0;
-    int text_w = (int)strlen(label) * FONT_UI_WIDTH;
+    int text_w = gfx_utf8_charcount(label) * FONT_UI_WIDTH;
     int tx = x + (w - text_w) / 2 + off;
     int ty = y + (h - FONT_UI_HEIGHT) / 2 + off;
     wd_text_ui(tx, ty, label, COLOR_BLACK, THEME_BUTTON_FACE);

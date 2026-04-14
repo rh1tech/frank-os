@@ -17,6 +17,8 @@
 
 #include "keyboard.h"
 #include "terminal.h"
+#include "settings.h"
+#include "lang.h"
 #include "ps2.h"
 #include "FreeRTOS.h"
 #include "task.h"
@@ -272,7 +274,41 @@ static uint8_t sc2_page1_lookup(uint8_t code) {
 // HID → ASCII
 //=============================================================================
 
+/* Forward declaration — ks is defined later in the file */
+static kbd_state_t ks;
+
+/* Russian ЙЦУКЕН layout: HID code (0x04-0x1D) → Win1251 lowercase.
+ * Standard Windows Russian keyboard mapping. */
+static const uint8_t hid_to_win1251_lower[26] = {
+    /* a=ф b=и c=с d=в e=у f=а g=п h=р i=ш j=о k=л l=д */
+    0xF4, 0xE8, 0xF1, 0xE2, 0xF3, 0xE0, 0xEF, 0xF0, 0xF8, 0xEE, 0xEB, 0xE4,
+    /* m=ь n=т o=щ p=з q=й r=к s=ы t=е u=г v=м w=ц x=ч y=н z=я */
+    0xFC, 0xF2, 0xF9, 0xE7, 0xE9, 0xEA, 0xFB, 0xE5, 0xE3, 0xEC, 0xF6, 0xF7, 0xED, 0xFF
+};
+static const uint8_t hid_to_win1251_upper[26] = {
+    0xD4, 0xC8, 0xD1, 0xC2, 0xD3, 0xC0, 0xCF, 0xD0, 0xD8, 0xCE, 0xCB, 0xC4,
+    0xDC, 0xD2, 0xD9, 0xC7, 0xC9, 0xCA, 0xDB, 0xC5, 0xC3, 0xCC, 0xD6, 0xD7, 0xCD, 0xDF
+};
+
 static uint8_t hid_to_ascii(uint8_t code, bool shift) {
+    // Russian mode: use Win1251 mapping
+    if (ks.bRus && code >= 0x04 && code <= 0x1D) {
+        bool upper = shift ^ ks.bCapsLock;
+        return upper ? hid_to_win1251_upper[code - 0x04]
+                     : hid_to_win1251_lower[code - 0x04];
+    }
+    // Russian punctuation overrides
+    if (ks.bRus) {
+        if (code == 0x2F) return shift ? 0xD5 : 0xF5; /* [ ] → х Х */
+        if (code == 0x30) return shift ? 0xDA : 0xFA; /* ] → ъ Ъ */
+        if (code == 0x33) return shift ? 0xC6 : 0xE6; /* ; → ж Ж */
+        if (code == 0x34) return shift ? 0xDD : 0xFD; /* ' → э Э */
+        if (code == 0x35) return shift ? 0xA8 : 0xB8; /* ` → ё Ё */
+        if (code == 0x36) return shift ? 0xC1 : 0xE1; /* , → б Б */
+        if (code == 0x37) return shift ? 0xDE : 0xFE; /* . → ю Ю */
+        if (code == 0x38) return shift ? ',' : '.';    /* / → . , */
+    }
+
     // Letters a-z (HID 0x04-0x1D)
     if (code >= 0x04 && code <= 0x1D) {
         uint8_t c = 'a' + (code - 0x04);
@@ -281,6 +317,11 @@ static uint8_t hid_to_ascii(uint8_t code, bool shift) {
     // Numbers 1-9, 0 (HID 0x1E-0x27)
     if (code >= 0x1E && code <= 0x27) {
         if (shift) {
+            if (ks.bRus) {
+                /* Russian: !"№;%:?*() */
+                const uint8_t ru_shifted[] = {'!','"',0xB9,';','%',':','?','*','(',')'};
+                return ru_shifted[code - 0x1E];
+            }
             const char shifted[] = "!@#$%^&*()";
             return (uint8_t)shifted[code - 0x1E];
         }
@@ -539,6 +580,35 @@ static kbd_state_t ks = { 0 };
 
 kbd_state_t *get_kbd_state(void) { return &ks; }
 
+bool keyboard_is_russian(void) { return ks.bRus; }
+
+void keyboard_toggle_input(void) {
+    /* Only toggle if system language supports a second layout */
+    if (settings_get()->language != LANG_EN) {
+        ks.bRus = !ks.bRus;
+        extern void taskbar_invalidate(void);
+        taskbar_invalidate();  /* update tray language indicator */
+    }
+}
+
+/* Check if the current key event should trigger a language toggle.
+ * Called from within the scancode handler when modifier keys change. */
+static void check_input_toggle(void) {
+    uint8_t mode = settings_get()->input_toggle;
+    if (settings_get()->language == LANG_EN) return;  /* no toggle for English-only */
+
+    if (mode == INPUT_TOGGLE_ALT_SHIFT) {
+        /* Alt+Shift: toggle when Shift pressed while Alt held, or vice versa */
+        if (ks.bAltPressed && (ks.bLeftShift || ks.bRightShift))
+            keyboard_toggle_input();
+    } else if (mode == INPUT_TOGGLE_CTRL_SHIFT) {
+        /* Ctrl+Shift: toggle when Shift pressed while Ctrl held, or vice versa */
+        if (ks.bCtrlPressed && (ks.bLeftShift || ks.bRightShift))
+            keyboard_toggle_input();
+    }
+    /* Alt+Space is handled separately (Space is a regular key, not a modifier) */
+}
+
 /*--- XT scancode → CP866 lookup tables (86 entries each) ---*/
 
 static const char scan_code_2_cp866_a[] = {
@@ -675,7 +745,7 @@ static void default_mos2_handler(uint32_t ps2scancode) {
         goto ex;
     case 0x1D: /* Ctrl press */
         ks.bCtrlPressed = true;
-        if (ks.bRightShift || ks.bLeftShift) ks.bRus = !ks.bRus;
+        check_input_toggle();
         break;
     case 0x9D: /* Ctrl release */
         ks.bCtrlPressed = false;
@@ -701,14 +771,14 @@ static void default_mos2_handler(uint32_t ps2scancode) {
         break;
     case 0x2A: /* Left Shift press */
         ks.bLeftShift = true;
-        if (ks.bCtrlPressed) ks.bRus = !ks.bRus;
+        check_input_toggle();
         break;
     case 0xAA: /* Left Shift release */
         ks.bLeftShift = false;
         break;
     case 0x36: /* Right Shift press */
         ks.bRightShift = true;
-        if (ks.bCtrlPressed) ks.bRus = !ks.bRus;
+        check_input_toggle();
         break;
     case 0xB6: /* Right Shift release */
         ks.bRightShift = false;
@@ -745,6 +815,14 @@ static void default_mos2_handler(uint32_t ps2scancode) {
         break;
     default:
         break;
+    }
+
+    /* Alt+Space: language toggle (INPUT_TOGGLE_ALT_SPACE mode) */
+    if (ks.bAltPressed && ks.input == 0x39 &&
+        settings_get()->input_toggle == INPUT_TOGGLE_ALT_SPACE &&
+        settings_get()->language != LANG_EN) {
+        keyboard_toggle_input();
+        goto ex;
     }
 
     /* Character lookup — only for make codes with index < 86 */

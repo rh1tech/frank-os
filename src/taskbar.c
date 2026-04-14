@@ -15,6 +15,8 @@
 #include "snd.h"
 #include "netcard.h"
 #include "lang.h"
+#include "settings.h"
+#include "keyboard.h"
 #include "gfx.h"
 #include "font.h"
 #include "display.h"
@@ -45,17 +47,26 @@ extern void spawn_network_settings(void);
 #define TASK_AREA_W       (tray_x() - TASK_AREA_X - 4)
 
 /* Notification area (system tray) — right side of taskbar.
- * When connected:    [net_icon 16px][4px][vol_icon 16px][4px][clock 40px] = 84px
- * When disconnected: [vol_icon 16px][4px][clock 40px]                    = 64px */
-#define TRAY_WIDTH_NET    84
-#define TRAY_WIDTH_NONET  64
+ * Layout: [lang 16px?][4px][net_icon 16px?][4px][vol_icon 16px][4px][clock 40px]
+ * Language indicator shown only when language != English. */
+#define TRAY_LANG_W     16      /* width of language indicator box */
 
-/* Dynamic tray geometry based on WiFi connection state */
-static inline int tray_w(void)  { return netcard_wifi_connected() ? TRAY_WIDTH_NET : TRAY_WIDTH_NONET; }
-static inline int tray_x(void)  { return (int)display_width - tray_w() - 2; }
-static inline int net_icon_x(void) { return tray_x() + 4; }
-static inline int vol_icon_x(void) { return tray_x() + (netcard_wifi_connected() ? 24 : 4); }
-static inline int clock_x(void)    { return tray_x() + (netcard_wifi_connected() ? 44 : 24); }
+static inline bool tray_has_lang(void) { return settings_get()->language != LANG_EN; }
+static inline bool tray_has_net(void)  { return netcard_wifi_connected(); }
+
+static inline int tray_w(void) {
+    int w = 4 + 16 + 4 + 40;   /* margin + vol + gap + clock = 64 base */
+    if (tray_has_net())  w += 20; /* net icon + gap */
+    if (tray_has_lang()) w += 20; /* lang box + gap */
+    return w;
+}
+static inline int tray_x(void) { return (int)display_width - tray_w() - 2; }
+
+/* Tray element positions (left to right) */
+static inline int lang_icon_x(void) { return tray_x() + 4; }
+static inline int net_icon_x(void)  { return lang_icon_x() + (tray_has_lang() ? 20 : 0); }
+static inline int vol_icon_x(void)  { return net_icon_x() + (tray_has_net() ? 20 : 0); }
+static inline int clock_x(void)     { return vol_icon_x() + 20; }
 #define ICON_Y            (BUTTON_Y + 3)
 #define CLOCK_Y           (BUTTON_Y + (BUTTON_HEIGHT - FONT_UI_HEIGHT) / 2)
 
@@ -252,6 +263,19 @@ void taskbar_draw(void) {
         gfx_vline(tx, ty, th, COLOR_DARK_GRAY);
         gfx_hline(tx + 1, ty + th - 1, tw - 1, COLOR_WHITE);
         gfx_vline(tx + tw - 1, ty + 1, th - 1, COLOR_WHITE);
+
+        /* Language indicator (only shown when language != English) */
+        if (tray_has_lang()) {
+            int lx = lang_icon_x();
+            int ly = ICON_Y;
+            /* Blue box with white text: EN or RU */
+            gfx_fill_rect(lx, ly, TRAY_LANG_W, 16, COLOR_BLUE);
+            const char *lt = keyboard_is_russian() ? "RU" : "EN";
+            int tw2 = 2 * FONT_UI_WIDTH;
+            gfx_text_ui(lx + (TRAY_LANG_W - tw2) / 2,
+                        ly + (16 - FONT_UI_HEIGHT) / 2,
+                        lt, COLOR_WHITE, COLOR_BLUE);
+        }
 
         /* Network icon (only shown when WiFi is connected) */
         if (netcard_wifi_connected()) {

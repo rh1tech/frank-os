@@ -189,7 +189,7 @@ static void cp_paint(hwnd_t hwnd) {
 
         /* Draw label centered below icon */
         const char *label = L(cp_str_ids[i]);
-        int tw = (int)strlen(label) * FONT_UI_WIDTH;
+        int tw = gfx_utf8_charcount(label) * FONT_UI_WIDTH;
         int text_x = cx + (CP_CELL_W - tw) / 2;
         int text_y = icon_y + CP_ICON_SIZE + 2;
 
@@ -226,7 +226,7 @@ hwnd_t control_panel_create(void) {
 
     hwnd_t hwnd = wm_create_window(
         60, 60, w, h,
-        "Control Panel", WSTYLE_DEFAULT,
+        L(STR_CONTROL_PANEL), WSTYLE_DEFAULT,
         cp_event, cp_paint);
 
     if (hwnd == HWND_NULL) return HWND_NULL;
@@ -777,7 +777,7 @@ static void mouse_paint(hwnd_t hwnd) {
     /* Labels */
     wd_text_ui(MOUSE_TRACK_X, MOUSE_TRACK_Y - 14, L(STR_SLOW),
                COLOR_BLACK, THEME_BUTTON_FACE);
-    wd_text_ui(MOUSE_TRACK_X + MOUSE_TRACK_W - (int)strlen(L(STR_FAST)) * FONT_UI_WIDTH,
+    wd_text_ui(MOUSE_TRACK_X + MOUSE_TRACK_W - gfx_utf8_charcount(L(STR_FAST)) * FONT_UI_WIDTH,
                MOUSE_TRACK_Y - 14, L(STR_FAST),
                COLOR_BLACK, THEME_BUTTON_FACE);
 
@@ -1071,7 +1071,19 @@ static void cp_open_freq(void) {
 static struct {
     hwnd_t hwnd;
     uint8_t selected;  /* 0=English, 1=Russian */
+    uint8_t toggle;    /* 0=Alt+Shift, 1=Ctrl+Shift, 2=Alt+Space */
 } lang_app;
+
+#define LA_BTN_Y  148
+
+static void lang_apply(void) {
+    lang_set(lang_app.selected);
+    settings_get()->input_toggle = lang_app.toggle;
+    settings_save();
+    wm_destroy_window(lang_app.hwnd);
+    taskbar_invalidate();
+    wm_force_full_repaint();
+}
 
 static bool lang_event(hwnd_t hwnd, const window_event_t *ev) {
     if (ev->type == WM_CLOSE) {
@@ -1080,19 +1092,6 @@ static bool lang_event(hwnd_t hwnd, const window_event_t *ev) {
         return true;
     }
     if (ev->type == WM_COMMAND) {
-        if (ev->command.id == 1) { /* OK */
-            lang_set(lang_app.selected);
-            settings_save();
-            wm_destroy_window(hwnd);
-            taskbar_invalidate();
-            wm_force_full_repaint();
-            return true;
-        }
-        if (ev->command.id == 2) { /* Cancel */
-            wm_destroy_window(hwnd);
-            taskbar_invalidate();
-            return true;
-        }
         if (ev->command.id == DLG_RESULT_OK ||
             ev->command.id == DLG_RESULT_CANCEL) {
             wm_invalidate(hwnd);
@@ -1102,28 +1101,23 @@ static bool lang_event(hwnd_t hwnd, const window_event_t *ev) {
     if (ev->type == WM_LBUTTONDOWN) {
         int16_t mx = ev->mouse.x;
         int16_t my = ev->mouse.y;
-        /* Radio buttons at y=30 and y=48 */
-        if (my >= 28 && my < 44) {
-            lang_app.selected = LANG_EN;
-            wm_invalidate(hwnd);
-            return true;
-        }
-        if (my >= 46 && my < 62) {
-            lang_app.selected = LANG_RU;
-            wm_invalidate(hwnd);
-            return true;
-        }
+
+        /* Language radio buttons */
+        if (my >= 28 && my < 44) { lang_app.selected = LANG_EN; wm_invalidate(hwnd); return true; }
+        if (my >= 46 && my < 62) { lang_app.selected = LANG_RU; wm_invalidate(hwnd); return true; }
+
+        /* Toggle radio buttons */
+        if (my >= 84 && my < 100)  { lang_app.toggle = 0; wm_invalidate(hwnd); return true; }
+        if (my >= 102 && my < 118) { lang_app.toggle = 1; wm_invalidate(hwnd); return true; }
+        if (my >= 120 && my < 136) { lang_app.toggle = 2; wm_invalidate(hwnd); return true; }
+
         /* OK button */
-        if (mx >= 30 && mx < 90 && my >= 74 && my < 96) {
-            lang_set(lang_app.selected);
-            settings_save();
-            wm_destroy_window(hwnd);
-            taskbar_invalidate();
-            wm_force_full_repaint();
+        if (mx >= 30 && mx < 90 && my >= LA_BTN_Y && my < LA_BTN_Y + 22) {
+            lang_apply();
             return true;
         }
         /* Cancel button */
-        if (mx >= 100 && mx < 160 && my >= 74 && my < 96) {
+        if (mx >= 100 && mx < 160 && my >= LA_BTN_Y && my < LA_BTN_Y + 22) {
             wm_destroy_window(hwnd);
             taskbar_invalidate();
             return true;
@@ -1137,25 +1131,30 @@ static void lang_paint(hwnd_t hwnd) {
     wd_begin(hwnd);
     wd_clear(THEME_BUTTON_FACE);
 
-    /* Label */
+    /* Language label + radios */
     wd_text_ui(12, 10, L(STR_SELECT_LANGUAGE), COLOR_BLACK, THEME_BUTTON_FACE);
-
-    /* Radio buttons */
     wd_radio(12, 30, "English", lang_app.selected == LANG_EN);
     wd_radio(12, 48, "\xD0\xF3\xF1\xF1\xEA\xE8\xE9", lang_app.selected == LANG_RU);
 
+    /* Input toggle label + radios */
+    wd_text_ui(12, 68, L(STR_INPUT_TOGGLE), COLOR_BLACK, THEME_BUTTON_FACE);
+    wd_radio(12, 86, "Alt+Shift", lang_app.toggle == 0);
+    wd_radio(12, 104, "Ctrl+Shift", lang_app.toggle == 1);
+    wd_radio(12, 122, "Alt+Space", lang_app.toggle == 2);
+
     /* OK / Cancel buttons */
-    wd_button(30, 74, 60, 22, L(STR_OK), false, false);
-    wd_button(100, 74, 60, 22, L(STR_CANCEL), false, false);
+    wd_button(30, LA_BTN_Y, 60, 22, L(STR_OK), false, false);
+    wd_button(100, LA_BTN_Y, 60, 22, L(STR_CANCEL), false, false);
 
     wd_end();
 }
 
 static void cp_open_lang(void) {
     lang_app.selected = lang_get();
+    lang_app.toggle = settings_get()->input_toggle;
 
     int16_t w = 200 + 2 * THEME_BORDER_WIDTH;
-    int16_t h = 104 + THEME_TITLE_HEIGHT + 2 * THEME_BORDER_WIDTH;
+    int16_t h = 180 + THEME_TITLE_HEIGHT + 2 * THEME_BORDER_WIDTH;
     hwnd_t hwnd = wm_create_window(
         180, 120, w, h, L(STR_LANGUAGE_PROPS),
         WSTYLE_DIALOG, lang_event, lang_paint);

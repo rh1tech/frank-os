@@ -54,7 +54,13 @@ void gfx_text_clipped(int x, int y, const char *str, uint8_t fg, uint8_t bg,
 
 /* UI font (8x12) drawing functions — regular weight */
 void gfx_char_ui(int x, int y, char c, uint8_t fg, uint8_t bg);
+void gfx_char_ui_clipped(int x, int y, char c, uint8_t fg, uint8_t bg,
+                          int cx, int cy, int cw, int ch);
 void gfx_text_ui(int x, int y, const char *str, uint8_t fg, uint8_t bg);
+
+/* Count characters in a UTF-8 string (not bytes). For width calculation:
+ * pixel_width = gfx_utf8_charcount(str) * FONT_UI_WIDTH */
+int gfx_utf8_charcount(const char *str);
 void gfx_text_ui_clipped(int x, int y, const char *str, uint8_t fg, uint8_t bg,
                           int cx, int cy, int cw, int ch);
 

@@ -66,13 +66,13 @@ static int menu_title_x(hwnd_t hwnd, int index) {
     menu_bar_t *bar = menu_get(hwnd);
     if (!bar) return x;
     for (int i = 0; i < index && i < bar->menu_count; i++) {
-        x += (int)strlen(bar->menus[i].title) * FONT_UI_WIDTH + MENU_PAD_LEFT * 2;
+        x += gfx_utf8_charcount(bar->menus[i].title) * FONT_UI_WIDTH + MENU_PAD_LEFT * 2;
     }
     return x;
 }
 
 static int menu_title_width(const char *title) {
-    return (int)strlen(title) * FONT_UI_WIDTH + MENU_PAD_LEFT * 2;
+    return gfx_utf8_charcount(title) * FONT_UI_WIDTH + MENU_PAD_LEFT * 2;
 }
 
 static void compute_dropdown_rect(void) {
@@ -90,7 +90,7 @@ static void compute_dropdown_rect(void) {
     /* Calculate width from longest item */
     int max_w = MENU_MIN_WIDTH;
     for (int i = 0; i < md->item_count; i++) {
-        int tw = (int)strlen(md->items[i].text) * FONT_UI_WIDTH + MENU_PAD_LEFT + MENU_PAD_RIGHT;
+        int tw = gfx_utf8_charcount(md->items[i].text) * FONT_UI_WIDTH + MENU_PAD_LEFT + MENU_PAD_RIGHT;
         if (tw > max_w) max_w = tw;
     }
     dropdown_w = max_w;
@@ -488,7 +488,7 @@ void menu_popup_show(hwnd_t owner, int16_t sx, int16_t sy,
     /* Calculate popup dimensions */
     int max_w = MENU_MIN_WIDTH;
     for (int i = 0; i < popup_count; i++) {
-        int tw = (int)strlen(popup_items[i].text) * FONT_UI_WIDTH +
+        int tw = gfx_utf8_charcount(popup_items[i].text) * FONT_UI_WIDTH +
                  MENU_PAD_LEFT + MENU_PAD_RIGHT;
         if (tw > max_w) max_w = tw;
     }
@@ -552,7 +552,7 @@ static void popup_sub_open(void) {
     /* Calculate sub dimensions */
     int max_w = MENU_MIN_WIDTH;
     for (int i = 0; i < popup_sub_count; i++) {
-        int tw = (int)strlen(popup_sub_items[i].text) * FONT_UI_WIDTH +
+        int tw = gfx_utf8_charcount(popup_sub_items[i].text) * FONT_UI_WIDTH +
                  MENU_PAD_LEFT + MENU_PAD_RIGHT;
         if (tw > max_w) max_w = tw;
     }

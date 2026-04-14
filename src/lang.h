@@ -14,6 +14,11 @@
 #define LANG_EN  0
 #define LANG_RU  1
 
+/* Input toggle modes */
+#define INPUT_TOGGLE_ALT_SHIFT   0
+#define INPUT_TOGGLE_CTRL_SHIFT  1
+#define INPUT_TOGGLE_ALT_SPACE   2
+
 /* String IDs — every user-visible string in the OS */
 enum {
     /* Common buttons */
@@ -54,7 +59,7 @@ enum {
     STR_CPU_FREQ, STR_PSRAM_FREQ, STR_REBOOT_NOTICE,
 
     /* Language */
-    STR_LANGUAGE_PROPS, STR_SELECT_LANGUAGE,
+    STR_LANGUAGE_PROPS, STR_SELECT_LANGUAGE, STR_INPUT_TOGGLE,
 
     /* File dialog */
     STR_LOOK_IN, STR_FILE_NAME, STR_OPEN, STR_SAVE,

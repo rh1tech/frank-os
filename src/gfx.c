@@ -155,6 +155,74 @@ void gfx_text_clipped(int x, int y, const char *str, uint8_t fg, uint8_t bg,
  * we always use per-pixel rendering — the cost is negligible.
  *=========================================================================*/
 
+/* Decode one UTF-8 character from *p, advance *p, return Win1251 glyph index.
+ * ASCII passes through. Cyrillic U+0400-U+04FF maps to Win1251. */
+static uint8_t utf8_next_win1251(const char **p) {
+    uint8_t b0 = (uint8_t)**p;
+    if (b0 < 0x80) { (*p)++; return b0; }
+    if ((b0 & 0xE0) == 0xC0 && (((uint8_t)(*p)[1]) & 0xC0) == 0x80) {
+        uint16_t cp = ((uint16_t)(b0 & 0x1F) << 6) | ((*p)[1] & 0x3F);
+        *p += 2;
+        if (cp >= 0x0410 && cp <= 0x042F) return (uint8_t)(cp - 0x0410 + 0xC0);
+        if (cp >= 0x0430 && cp <= 0x044F) return (uint8_t)(cp - 0x0430 + 0xE0);
+        if (cp == 0x0401) return 0xA8;  /* Ё */
+        if (cp == 0x0451) return 0xB8;  /* ё */
+        if (cp == 0x2116) return 0xB9;  /* № */
+        if (cp == 0x00AB) return 0xAB;  /* « */
+        if (cp == 0x00BB) return 0xBB;  /* » */
+        if (cp == 0x00A0) return ' ';   /* nbsp */
+        /* Other 2-byte: return '?' */
+        return '?';
+    }
+    if ((b0 & 0xF0) == 0xE0) {
+        uint16_t cp = ((uint16_t)(b0 & 0x0F) << 12) |
+                      ((uint16_t)((*p)[1] & 0x3F) << 6) | ((*p)[2] & 0x3F);
+        *p += 3;
+        if (cp == 0x2013 || cp == 0x2014) return '-';
+        if (cp == 0x2018 || cp == 0x2019) return '\'';
+        if (cp == 0x201C || cp == 0x201D) return '"';
+        if (cp == 0x2022) return 0x95;  /* bullet */
+        if (cp == 0x2026) return '.';   /* ellipsis */
+        if (cp == 0x2116) return 0xB9;  /* № */
+        return '?';
+    }
+    /* 4-byte or invalid: skip */
+    if ((b0 & 0xF8) == 0xF0) { *p += 4; return '?'; }
+    (*p)++; return '?';
+}
+
+/* Count UTF-8 characters (not bytes) for width calculations */
+int gfx_utf8_charcount(const char *str) {
+    int count = 0;
+    while (*str) {
+        uint8_t b = (uint8_t)*str;
+        if (b < 0x80)        str += 1;
+        else if (b < 0xE0)   str += 2;
+        else if (b < 0xF0)   str += 3;
+        else                  str += 4;
+        count++;
+    }
+    return count;
+}
+
+/* Single-character clipped render (Win1251 byte, not UTF-8) */
+void gfx_char_ui_clipped(int x, int y, char c, uint8_t fg, uint8_t bg,
+                          int cx, int cy, int cw, int ch) {
+    int cx1 = cx + cw, cy1 = cy + ch;
+    if (x + FONT_UI_WIDTH <= cx || x >= cx1) return;
+    const uint8_t *glyph = font_ui_get_glyph((uint8_t)c);
+    for (int row = 0; row < FONT_UI_HEIGHT; row++) {
+        int py = y + row;
+        if (py < cy || py >= cy1) continue;
+        uint8_t bits = glyph[row];
+        for (int col = 0; col < FONT_UI_WIDTH; col++) {
+            int px = x + col;
+            if (px < cx || px >= cx1) continue;
+            display_set_pixel(px, py, (bits & (0x80 >> col)) ? fg : bg);
+        }
+    }
+}
+
 void gfx_char_ui(int x, int y, char c, uint8_t fg, uint8_t bg) {
     const uint8_t *glyph = font_ui_get_glyph((uint8_t)c);
     for (int row = 0; row < FONT_UI_HEIGHT; row++) {
@@ -168,9 +236,9 @@ void gfx_char_ui(int x, int y, char c, uint8_t fg, uint8_t bg) {
 
 void gfx_text_ui(int x, int y, const char *str, uint8_t fg, uint8_t bg) {
     while (*str) {
-        gfx_char_ui(x, y, *str, fg, bg);
+        uint8_t ch = utf8_next_win1251(&str);
+        gfx_char_ui(x, y, (char)ch, fg, bg);
         x += FONT_UI_WIDTH;
-        str++;
     }
 }
 
@@ -179,8 +247,9 @@ void gfx_text_ui_clipped(int x, int y, const char *str, uint8_t fg, uint8_t bg,
     int cx1 = cx + cw;
     int cy1 = cy + ch;
     while (*str) {
+        uint8_t glyph_ch = utf8_next_win1251(&str);
         if (x + FONT_UI_WIDTH > cx && x < cx1) {
-            const uint8_t *glyph = font_ui_get_glyph((uint8_t)*str);
+            const uint8_t *glyph = font_ui_get_glyph(glyph_ch);
             for (int row = 0; row < FONT_UI_HEIGHT; row++) {
                 int py = y + row;
                 if (py < cy || py >= cy1) continue;
@@ -194,7 +263,6 @@ void gfx_text_ui_clipped(int x, int y, const char *str, uint8_t fg, uint8_t bg,
             }
         }
         x += FONT_UI_WIDTH;
-        str++;
     }
 }
 
@@ -218,9 +286,9 @@ void gfx_char_ui_bold(int x, int y, char c, uint8_t fg, uint8_t bg) {
 
 void gfx_text_ui_bold(int x, int y, const char *str, uint8_t fg, uint8_t bg) {
     while (*str) {
-        gfx_char_ui_bold(x, y, *str, fg, bg);
-        x += FONT_UI_WIDTH + 1;   /* +1px letter spacing for bold */
-        str++;
+        uint8_t ch = utf8_next_win1251(&str);
+        gfx_char_ui_bold(x, y, (char)ch, fg, bg);
+        x += FONT_UI_WIDTH + 1;
     }
 }
 
@@ -230,8 +298,9 @@ void gfx_text_ui_bold_clipped(int x, int y, const char *str,
     int cx1 = cx + cw;
     int cy1 = cy + ch;
     while (*str) {
+        uint8_t glyph_ch = utf8_next_win1251(&str);
         if (x + FONT_UI_WIDTH > cx && x < cx1) {
-            const uint8_t *glyph = font_ui_bold_get_glyph((uint8_t)*str);
+            const uint8_t *glyph = font_ui_bold_get_glyph(glyph_ch);
             for (int row = 0; row < FONT_UI_HEIGHT; row++) {
                 int py = y + row;
                 if (py < cy || py >= cy1) continue;
@@ -244,8 +313,7 @@ void gfx_text_ui_bold_clipped(int x, int y, const char *str,
                 }
             }
         }
-        x += FONT_UI_WIDTH + 1;   /* +1px letter spacing for bold */
-        str++;
+        x += FONT_UI_WIDTH + 1;
     }
 }
 

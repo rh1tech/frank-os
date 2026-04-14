@@ -369,7 +369,7 @@ static void ns_draw_button(int btn, int cw, const char *label, bool enabled) {
     bool pressed = (nsp->btn_pressed == btn);
     wd_button(bx, by, bw, bh, label, false, pressed);
     if (!enabled && !pressed) {
-        int tw = (int)strlen(label) * FONT_UI_WIDTH;
+        int tw = gfx_utf8_charcount(label) * FONT_UI_WIDTH;
         int tx = bx + (bw - tw) / 2;
         int ty = by + (bh - FONT_UI_HEIGHT) / 2;
         wd_text_ui(tx, ty, label, COLOR_DARK_GRAY, THEME_BUTTON_FACE);

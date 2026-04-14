@@ -446,7 +446,7 @@ void desktop_paint(void) {
             strncpy(display_name, name, sizeof(display_name) - 1);
             display_name[sizeof(display_name) - 1] = '\0';
         }
-        int tw = (int)strlen(display_name) * FONT_UI_WIDTH;
+        int tw = gfx_utf8_charcount(display_name) * FONT_UI_WIDTH;
         int text_x = cx + (DT_CELL_W - tw) / 2;
         if (text_x < cx) text_x = cx;
 

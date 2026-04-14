@@ -720,11 +720,44 @@ static void input_task(void *params) {
                     wm_post_event_focused(&we);
                 }
 
-                /* Also send WM_CHAR for printable ASCII */
+                /* Send WM_CHAR for printable characters.
+                 * Win1251 Cyrillic (0x80+) is converted to UTF-8
+                 * (2 bytes → 2 WM_CHAR events). */
                 if (kev.ascii >= 0x20 && kev.ascii <= 0x7E) {
                     we.type = WM_CHAR;
                     we.charev.ch = kev.ascii;
                     wm_post_event_focused(&we);
+                } else if (kev.ascii >= 0x80) {
+                    /* Convert Win1251 byte to Unicode codepoint,
+                     * then encode as UTF-8 (2 bytes for Cyrillic) */
+                    uint16_t cp = 0;
+                    uint8_t b = kev.ascii;
+                    if (b >= 0xC0 && b <= 0xDF) cp = 0x0410 + (b - 0xC0);
+                    else if (b >= 0xE0 && b <= 0xFF) cp = 0x0430 + (b - 0xE0);
+                    else if (b == 0xA8) cp = 0x0401;
+                    else if (b == 0xB8) cp = 0x0451;
+                    else if (b == 0xB9) cp = 0x2116;
+                    else cp = b;  /* fallback */
+
+                    if (cp >= 0x80 && cp < 0x800) {
+                        we.type = WM_CHAR;
+                        we.charev.ch = (char)(0xC0 | (cp >> 6));
+                        wm_post_event_focused(&we);
+                        we.charev.ch = (char)(0x80 | (cp & 0x3F));
+                        wm_post_event_focused(&we);
+                    } else if (cp >= 0x800) {
+                        we.type = WM_CHAR;
+                        we.charev.ch = (char)(0xE0 | (cp >> 12));
+                        wm_post_event_focused(&we);
+                        we.charev.ch = (char)(0x80 | ((cp >> 6) & 0x3F));
+                        wm_post_event_focused(&we);
+                        we.charev.ch = (char)(0x80 | (cp & 0x3F));
+                        wm_post_event_focused(&we);
+                    } else {
+                        we.type = WM_CHAR;
+                        we.charev.ch = (char)cp;
+                        wm_post_event_focused(&we);
+                    }
                 }
             } else {
                 we.type = WM_KEYUP;

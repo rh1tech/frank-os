@@ -268,7 +268,7 @@ void alttab_draw(void) {
     /* ── Title of selected entry (centered below icons, clipped) ── */
     if (at_sel < at_count) {
         const char *title = at_entries[at_sel].title;
-        int title_w = (int)strlen(title) * FONT_UI_WIDTH;
+        int title_w = gfx_utf8_charcount(title) * FONT_UI_WIDTH;
         int tx = at_x + (at_w - title_w) / 2;
         int ty = icons_y0 + AT_CELL_H;
 
