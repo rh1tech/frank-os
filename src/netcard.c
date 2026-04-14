@@ -242,6 +242,7 @@ static void nc_process_line(const char *line, uint16_t len) {
         while (*p && *p != ',' && i < (int)sizeof(wifi_ip_str) - 1)
             wifi_ip_str[i++] = *p++;
         wifi_ip_str[i] = '\0';
+        taskbar_invalidate();   /* show network tray icon */
         if (cb_wifi)
             cb_wifi(true, wifi_ip_str);
         return;
@@ -252,6 +253,7 @@ static void nc_process_line(const char *line, uint16_t len) {
         wifi_connected = true;
         strncpy(wifi_ip_str, line + 7, sizeof(wifi_ip_str) - 1);
         wifi_ip_str[sizeof(wifi_ip_str) - 1] = '\0';
+        taskbar_invalidate();   /* show network tray icon */
         if (cb_wifi)
             cb_wifi(true, wifi_ip_str);
         return;
@@ -261,6 +263,7 @@ static void nc_process_line(const char *line, uint16_t len) {
     if (strcmp(line, "+WDISCONN") == 0) {
         wifi_connected = false;
         wifi_ip_str[0] = '\0';
+        taskbar_invalidate();   /* hide network tray icon */
         if (cb_wifi)
             cb_wifi(false, NULL);
         return;

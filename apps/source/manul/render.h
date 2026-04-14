@@ -38,7 +38,8 @@ typedef struct {
 typedef struct {
     render_cell_t cells[RENDER_MAX_COLS];
     uint8_t len;
-    uint8_t _pad[3];
+    uint8_t heading;    /* 0=normal, 1-6=heading level (2x render) */
+    uint8_t _pad[2];
 } render_line_t;
 
 typedef struct {
@@ -76,6 +77,8 @@ typedef struct {
     bool at_line_start;
     bool pending_paragraph;
     bool pending_br;
+    char pending_bullet[8];  /* deferred bullet text, emitted on first content */
+    uint8_t pending_bullet_len;
     bool in_head;
     bool in_title;
     bool suppress_output;

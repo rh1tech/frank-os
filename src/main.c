@@ -773,13 +773,12 @@ static void input_task(void *params) {
             }
             prev_buttons = buttons;
 
-            /* Button state changed or held — full recomposite needed.
-             * When buttons are held (drag), the target window needs
-             * WM_MOUSEMOVE events dispatched for selection tracking. */
-            if (changed || buttons) {
-                g_video_dirty = true;
-            } else {
-                /* Move only — cheap show-buffer cursor update */
+            /* Always dispatch mouse events so apps can track hover.
+             * The compositor handles selective repainting efficiently. */
+            g_video_dirty = true;
+            if (!changed && !buttons) {
+                /* Passive move — also update cursor overlay directly
+                 * for low-latency cursor rendering */
                 if (!boot_cursor_hidden)
                     cursor_overlay_move(cur_x, cur_y);
             }

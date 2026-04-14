@@ -14,6 +14,7 @@
 #include "render.h"
 #include "http.h"
 #include "url.h"
+#include "font.h"
 
 /* FatFS not needed but included by m-os-api.h */
 #include "m-os-api-ff.h"
@@ -114,6 +115,7 @@ typedef struct {
     /* Scroll & links */
     int32_t      scroll_y;       /* pixel offset */
     int16_t      selected_link;  /* -1 = none */
+    int16_t      hover_link;     /* -1 = none, link under mouse cursor */
     int16_t      content_w;      /* client-derived */
     int16_t      content_h;
 
@@ -158,6 +160,7 @@ typedef struct {
     /* State flags */
     bool         closing;
     bool         wifi_ok;
+    bool         skip_history;   /* set by back/forward to prevent push */
 } browser_t;
 
 #define RECV_RING_SIZE  (256 * 1024)   /* 256KB in PSRAM — GitHub pages can be 150KB+ */
@@ -263,7 +266,8 @@ static void br_update_title(void) {
     }
     title[n] = '\0';
     memcpy(win->title, title, n + 1);
-    wm_invalidate(br.hwnd);
+    win->flags |= WF_DIRTY | WF_FRAME_DIRTY;
+    wm_mark_dirty();
     taskbar_invalidate();
 }
 
@@ -271,15 +275,28 @@ static void br_update_title(void) {
  * Scrollbar
  *=========================================================================*/
 
+static int32_t br_total_content_height(void) {
+    int32_t h = 0;
+    uint16_t i;
+    for (i = 0; i < br.page.num_lines; i++) {
+        const render_line_t *line = render_get_line(&br.page, i);
+        if (line && line->heading > 0)
+            h += HFONT_H;
+        else
+            h += LFONT_H;
+    }
+    return h;
+}
+
 static int32_t br_max_scroll(void) {
-    int32_t total_h = (int32_t)br.page.num_lines * FONT_UI_HEIGHT;
+    int32_t total_h = br_total_content_height();
     int32_t max = total_h - br.content_h;
     if (max < 0) max = 0;
     return max;
 }
 
 static void br_update_scrollbar(void) {
-    int32_t total_h = (int32_t)br.page.num_lines * FONT_UI_HEIGHT;
+    int32_t total_h = br_total_content_height();
     /* Hide scrollbar when content fits */
     br.vscroll.visible = (total_h > br.content_h);
     scrollbar_set_range(&br.vscroll, total_h, br.content_h);
@@ -296,7 +313,7 @@ static void br_history_push(void) {
     history_entry_t *e = &br.history[br.history_pos % HISTORY_SIZE];
     strncpy(e->url, br.current_url, sizeof(e->url) - 1);
     e->url[sizeof(e->url) - 1] = '\0';
-    e->scroll_pos = (uint16_t)(br.scroll_y / FONT_UI_HEIGHT);
+    e->scroll_pos = (uint16_t)(br.scroll_y / LFONT_H);
     e->selected_link = br.selected_link;
 
     br.history_pos = (br.history_pos + 1) % HISTORY_SIZE;
@@ -315,7 +332,7 @@ static void br_go_back(void) {
         history_entry_t *fe = &br.forward[br.forward_count++];
         strncpy(fe->url, br.current_url, sizeof(fe->url) - 1);
         fe->url[sizeof(fe->url) - 1] = '\0';
-        fe->scroll_pos = (uint16_t)(br.scroll_y / FONT_UI_HEIGHT);
+        fe->scroll_pos = (uint16_t)(br.scroll_y / LFONT_H);
         fe->selected_link = br.selected_link;
     }
 
@@ -326,6 +343,7 @@ static void br_go_back(void) {
     br.history_count--;
 
     history_entry_t *e = &br.history[br.history_pos % HISTORY_SIZE];
+    br.skip_history = true;
     br_navigate(e->url);
 }
 
@@ -340,7 +358,7 @@ static void br_go_forward(void) {
         history_entry_t *he = &br.history[br.history_pos % HISTORY_SIZE];
         strncpy(he->url, br.current_url, sizeof(he->url) - 1);
         he->url[sizeof(he->url) - 1] = '\0';
-        he->scroll_pos = (uint16_t)(br.scroll_y / FONT_UI_HEIGHT);
+        he->scroll_pos = (uint16_t)(br.scroll_y / LFONT_H);
         he->selected_link = br.selected_link;
         br.history_pos = (br.history_pos + 1) % HISTORY_SIZE;
         if (br.history_count < HISTORY_SIZE)
@@ -349,6 +367,7 @@ static void br_go_forward(void) {
 
     /* Navigate without clearing forward stack */
     uint8_t saved_fwd = br.forward_count;
+    br.skip_history = true;
     br_navigate(fe->url);
     br.forward_count = saved_fwd;
 }
@@ -365,7 +384,9 @@ static void br_navigate(const char *url) {
     br.nav_pending = true;
 
     /* Prepare UI immediately */
-    br_history_push();
+    if (!br.skip_history)
+        br_history_push();
+    br.skip_history = false;
     strncpy(br.current_url, url, sizeof(br.current_url) - 1);
     br.current_url[sizeof(br.current_url) - 1] = '\0';
     br.mode = MODE_LOADING;
@@ -473,11 +494,11 @@ static void br_select_link(int16_t idx) {
     /* Scroll to make the link visible */
     const render_link_t *link = render_get_link(&br.page, (uint16_t)idx);
     if (link) {
-        int32_t link_py = (int32_t)link->start_line * FONT_UI_HEIGHT;
+        int32_t link_py = (int32_t)link->start_line * LFONT_H;
         if (link_py < br.scroll_y)
             br.scroll_y = link_py;
-        else if (link_py + FONT_UI_HEIGHT > br.scroll_y + br.content_h)
-            br.scroll_y = link_py + FONT_UI_HEIGHT - br.content_h;
+        else if (link_py + LFONT_H > br.scroll_y + br.content_h)
+            br.scroll_y = link_py + LFONT_H - br.content_h;
 
         int32_t max = br_max_scroll();
         if (br.scroll_y > max) br.scroll_y = max;
@@ -510,26 +531,33 @@ static void br_follow_link(void) {
     br_navigate(link->url);
 }
 
-/* Find link at pixel position (client coords, in content area) */
+/* Find link at pixel position (client coords, in content area).
+ * Walks lines with variable height (headings are taller). */
 static int16_t br_link_at_pixel(int16_t mx, int16_t my) {
     if (my < CONTENT_Y + CONTENT_PAD) return -1;
     if (mx < CONTENT_PAD) return -1;
 
-    int16_t cy = my - CONTENT_Y - CONTENT_PAD;
-    int32_t line_idx = (br.scroll_y + cy) / FONT_UI_HEIGHT;
-    int32_t col_idx = (mx - CONTENT_PAD) / FONT_UI_WIDTH;
+    int32_t target_y = br.scroll_y + (my - CONTENT_Y - CONTENT_PAD);
+    int32_t py = 0;
+    uint16_t li;
 
-    if (line_idx < 0 || line_idx >= (int32_t)br.page.num_lines)
-        return -1;
-    if (col_idx < 0 || col_idx >= RENDER_MAX_COLS)
-        return -1;
-
-    const render_line_t *line = render_get_line(&br.page, (uint16_t)line_idx);
-    if (!line) return -1;
-
-    int8_t lid = line->cells[col_idx].link_id;
-    if (lid < 0) return -1;
-    return (int16_t)lid;
+    for (li = 0; li < br.page.num_lines; li++) {
+        const render_line_t *line = render_get_line(&br.page, li);
+        if (!line) return -1;
+        int16_t lh = (line->heading > 0) ? HFONT_H : LFONT_H;
+        if (target_y >= py && target_y < py + lh) {
+            /* Found the line */
+            int16_t char_w = (line->heading > 0) ? HFONT_W : LFONT_W;
+            int32_t col_idx = (mx - CONTENT_PAD) / char_w;
+            if (col_idx < 0 || col_idx >= RENDER_MAX_COLS)
+                return -1;
+            int8_t lid = line->cells[col_idx].link_id;
+            if (lid < 0) return -1;
+            return (int16_t)lid;
+        }
+        py += lh;
+    }
+    return -1;
 }
 
 /*==========================================================================
@@ -586,21 +614,27 @@ static void br_process_recv(void) {
         const http_response_t *resp = http_get_response();
         int status_code = resp ? resp->status_code : 0;
 
+        /* Always finalize the HTML parser — we may have partial content */
+        html_parser_finish(&br.html_parser,
+                           (html_token_cb_t)render_process_token,
+                           &br.render_ctx);
+        render_flush(&br.render_ctx);
+
+        if (br.page.num_links > 0 && br.selected_link < 0)
+            br.selected_link = 0;
+
         if (status_code >= 200 && status_code < 400) {
-            html_parser_finish(&br.html_parser,
-                               (html_token_cb_t)render_process_token,
-                               &br.render_ctx);
-            render_flush(&br.render_ctx);
-
-            if (br.page.num_links > 0)
-                br.selected_link = 0;
-
             snprintf(br.status_text, sizeof(br.status_text),
                      "Done - %u lines, %u links",
                      br.page.num_lines, br.page.num_links);
-        } else if (status_code == 0) {
+        } else if (status_code == 0 && br.page.num_lines <= 1) {
             strncpy(br.status_text, "Error: connection failed",
                     sizeof(br.status_text) - 1);
+        } else if (status_code == 0) {
+            /* Got some content despite status 0 (e.g. timeout) */
+            snprintf(br.status_text, sizeof(br.status_text),
+                     "Done - %u lines, %u links",
+                     br.page.num_lines, br.page.num_links);
         } else {
             snprintf(br.status_text, sizeof(br.status_text),
                      "HTTP error %d", status_code);
@@ -664,22 +698,17 @@ static void br_show_welcome(void) {
 
 static void blink_cb(TimerHandle_t t) {
     (void)t;
-    bool need_repaint = false;
 
     if (br.mode == MODE_URL_INPUT) {
         br.addr_ta.cursor_visible = !br.addr_ta.cursor_visible;
-        need_repaint = true;
-        /* Note: content_dirty stays false — only toolbar repaints */
+        wm_invalidate(br.hwnd);
     }
 
     /* Animate loading dots in status bar */
     if (br.mode == MODE_LOADING) {
         br.loading_dots = (br.loading_dots + 1) % 4;
-        need_repaint = true;
-    }
-
-    if (need_repaint)
         wm_invalidate(br.hwnd);
+    }
 }
 
 /*==========================================================================
@@ -693,13 +722,26 @@ static void br_paint_toolbar(void) {
     /* Toolbar background */
     wd_fill_rect(0, 0, cw, TOOLBAR_H, THEME_BUTTON_FACE);
 
-    /* Buttons: B, F, S, R */
+    /* Buttons: B, F, S, R — disabled when action unavailable */
     const char *labels[] = { "B", "F", "S", "R" };
+    bool enabled[4];
+    enabled[0] = (br.history_count > 0);               /* Back */
+    enabled[1] = (br.forward_count > 0);               /* Forward */
+    enabled[2] = (br.mode == MODE_LOADING);             /* Stop */
+    enabled[3] = (br.mode != MODE_LOADING &&            /* Refresh */
+                  br.current_url[0] != '\0');
+
     int16_t bx = BTN_GAP;
     int i;
     for (i = 0; i < 4; i++) {
-        bool pressed = (br.btn_pressed == i);
+        bool pressed = (br.btn_pressed == i) && enabled[i];
         wd_button(bx, BTN_Y, BTN_W, BTN_H, labels[i], false, pressed);
+        if (!enabled[i]) {
+            /* Overdraw label as grayed out */
+            int16_t tx = bx + (BTN_W - FONT_UI_WIDTH) / 2;
+            int16_t ty = BTN_Y + (BTN_H - FONT_UI_HEIGHT) / 2;
+            wd_text_ui(tx, ty, labels[i], COLOR_DARK_GRAY, THEME_BUTTON_FACE);
+        }
         bx += BTN_W + BTN_GAP;
     }
 
@@ -720,20 +762,53 @@ static void br_paint_toolbar(void) {
     wd_hline(0, TOOLBAR_H - 1, cw, COLOR_DARK_GRAY);
 }
 
+/* Draw a 6x12 character using leggie font (all chars, ASCII + Cyrillic) */
+static void draw_char(int16_t px, int16_t py, uint8_t ch,
+                      uint8_t fg, uint8_t bg, bool bold) {
+    int r, b;
+    for (r = 0; r < LFONT_H; r++) {
+        uint8_t bits = cfont_row(ch, (uint8_t)r, bold);
+        for (b = 0; b < LFONT_W; b++) {
+            uint8_t color = (bits & 0x80) ? fg : bg;
+            wd_pixel(px + b, py + r, color);
+            bits <<= 1;
+        }
+    }
+}
+
+/* Draw a heading character using leggie 9x18 bold */
+static void draw_heading_char(int16_t px, int16_t py, uint8_t ch,
+                              uint8_t fg, uint8_t bg) {
+    int r, b;
+    for (r = 0; r < HFONT_H; r++) {
+        uint16_t bits = cfont_heading_row(ch, (uint8_t)r);
+        for (b = 0; b < HFONT_W; b++) {
+            uint8_t color = (bits & 0x8000) ? fg : bg;
+            wd_pixel(px + b, py + r, color);
+            bits <<= 1;
+        }
+    }
+}
+
+/* Line height depends on heading level */
+static int16_t line_height(const render_line_t *line) {
+    if (line->heading > 0)
+        return HFONT_H;        /* 18px for headings */
+    return LFONT_H;             /* 12px normal */
+}
+
 static void br_paint_content(void) {
     int16_t cw_total, ch_total;
     wd_get_clip_size(&cw_total, &ch_total);
 
-    /* Full content region (including padding) */
     int16_t region_x = 0;
     int16_t region_y = CONTENT_Y;
     int16_t region_w = br.vscroll.visible ? (cw_total - SCROLLBAR_WIDTH) : cw_total;
     int16_t region_h = br.content_h;
 
-    /* Background — white, covers padding too */
+    /* Background — white */
     wd_fill_rect(region_x, region_y, region_w, region_h, COLOR_WHITE);
 
-    /* Text area inside padding */
     int16_t tx = region_x + CONTENT_PAD;
     int16_t ty = region_y + CONTENT_PAD;
     int16_t tw = region_w - 2 * CONTENT_PAD;
@@ -741,28 +816,31 @@ static void br_paint_content(void) {
     if (tw < 0) tw = 0;
     if (th < 0) th = 0;
 
-    /* Render visible lines */
-    int32_t first_line = br.scroll_y / FONT_UI_HEIGHT;
-    int32_t y_offset = br.scroll_y % FONT_UI_HEIGHT;
-    int32_t visible_lines = th / FONT_UI_HEIGHT + 2;
-    int32_t vl;
+    /* Walk lines, accumulating pixel Y from variable-height lines */
+    int32_t pixel_y = -br.scroll_y;  /* relative to ty */
+    uint16_t li;
 
-    for (vl = 0; vl < visible_lines; vl++) {
-        int32_t line_idx = first_line + vl;
-        int16_t py = (int16_t)(ty + vl * FONT_UI_HEIGHT - y_offset);
+    for (li = 0; li < br.page.num_lines; li++) {
+        const render_line_t *line = render_get_line(&br.page, li);
+        if (!line) break;
 
+        int16_t lh = line_height(line);
+        int16_t py = (int16_t)(ty + pixel_y);
+
+        /* Skip lines above viewport */
+        if (py + lh <= ty) {
+            pixel_y += lh;
+            continue;
+        }
+        /* Stop if below viewport */
         if (py >= ty + th) break;
-        if (py + FONT_UI_HEIGHT <= ty) continue;
-        if (line_idx < 0 || line_idx >= (int32_t)br.page.num_lines) continue;
 
-        const render_line_t *line = render_get_line(&br.page,
-                                                    (uint16_t)line_idx);
-        if (!line) continue;
+        bool is_heading = (line->heading > 0);
+        int16_t char_w = is_heading ? HFONT_W : LFONT_W;
 
         int32_t col;
-        for (col = 0; col < RENDER_MAX_COLS; col++) {
-            int16_t px = (int16_t)(tx + col * FONT_UI_WIDTH);
-            if (px + FONT_UI_WIDTH <= tx) continue;
+        for (col = 0; col < (int32_t)line->len; col++) {
+            int16_t px = (int16_t)(tx + col * char_w);
             if (px >= tx + tw) break;
 
             const render_cell_t *cell = &line->cells[col];
@@ -770,9 +848,16 @@ static void br_paint_content(void) {
 
             if (cell->link_id >= 0 &&
                 cell->link_id == br.selected_link) {
+                /* Selected link (Tab): reverse video */
                 fg = COLOR_WHITE;
                 bg = COLOR_BLUE;
+            } else if (cell->link_id >= 0 &&
+                       cell->link_id == br.hover_link) {
+                /* Hovered link (mouse): highlighted background */
+                fg = COLOR_BLUE;
+                bg = COLOR_LIGHT_CYAN;
             } else if (cell->link_id >= 0) {
+                /* Normal link: blue underlined */
                 fg = COLOR_BLUE;
                 bg = COLOR_WHITE;
             } else {
@@ -780,9 +865,25 @@ static void br_paint_content(void) {
                 bg = COLOR_WHITE;
             }
 
-            if (col < (int32_t)line->len)
-                wd_char_ui(px, py, cell->ch, fg, bg);
+            uint8_t ch = (uint8_t)cell->ch;
+            bool bold = (cell->attr & RATTR_BOLD) != 0;
+
+            if (is_heading) {
+                draw_heading_char(px, py, ch, fg, bg);
+            } else {
+                draw_char(px, py, ch, fg, bg, bold);
+            }
+
+            /* Draw underline for links */
+            if (cell->link_id >= 0) {
+                int16_t uy = py + LFONT_H - 1;
+                int ub;
+                for (ub = 0; ub < LFONT_W; ub++)
+                    wd_pixel(px + ub, uy, fg);
+            }
         }
+
+        pixel_y += lh;
     }
 }
 
@@ -817,14 +918,9 @@ static void br_paint(hwnd_t hwnd) {
 
     br_paint_toolbar();
 
-    /* Only repaint content when it actually changed — cursor blink
-     * in the address bar should NOT cause the page to flicker. */
-    if (br.content_dirty) {
-        br_paint_content();
-        if (br.vscroll.visible)
-            scrollbar_paint(&br.vscroll);
-        br.content_dirty = false;
-    }
+    br_paint_content();
+    if (br.vscroll.visible)
+        scrollbar_paint(&br.vscroll);
 
     br_paint_status();
 
@@ -1060,7 +1156,7 @@ static bool br_event(hwnd_t hwnd, const window_event_t *ev) {
 
         /* Scroll: Up/Down */
         if (sc == SC_UP) {
-            br.scroll_y -= FONT_UI_HEIGHT;
+            br.scroll_y -= LFONT_H;
             if (br.scroll_y < 0) br.scroll_y = 0;
             br_update_scrollbar();
             br.content_dirty = true;
@@ -1068,7 +1164,7 @@ static bool br_event(hwnd_t hwnd, const window_event_t *ev) {
             return true;
         }
         if (sc == SC_DOWN) {
-            br.scroll_y += FONT_UI_HEIGHT;
+            br.scroll_y += LFONT_H;
             int32_t max = br_max_scroll();
             if (br.scroll_y > max) br.scroll_y = max;
             br_update_scrollbar();
@@ -1131,13 +1227,20 @@ static bool br_event(hwnd_t hwnd, const window_event_t *ev) {
         int16_t mx = ev->mouse.x;
         int16_t my = ev->mouse.y;
 
-        /* Toolbar button clicks */
+        /* Toolbar button clicks — only if enabled */
         if (my < TOOLBAR_H) {
+            bool btn_en[4];
+            btn_en[0] = (br.history_count > 0);
+            btn_en[1] = (br.forward_count > 0);
+            btn_en[2] = (br.mode == MODE_LOADING);
+            btn_en[3] = (br.mode != MODE_LOADING && br.current_url[0] != '\0');
+
             int16_t bx = BTN_GAP;
             int i;
             for (i = 0; i < 4; i++) {
                 if (mx >= bx && mx < bx + BTN_W &&
-                    my >= BTN_Y && my < BTN_Y + BTN_H) {
+                    my >= BTN_Y && my < BTN_Y + BTN_H &&
+                    btn_en[i]) {
                     br.btn_pressed = (int8_t)i;
                     wm_invalidate(br.hwnd);
                     return true;
@@ -1227,6 +1330,17 @@ static bool br_event(hwnd_t hwnd, const window_event_t *ev) {
             return true;
         }
 
+        /* Track hover over links.
+         * wm_post_event skips compositor_dirty for MOUSEMOVE, so
+         * we need wm_force_full_repaint to wake the compositor. */
+        int16_t old_hover = br.hover_link;
+        br.hover_link = br_link_at_pixel(ev->mouse.x, ev->mouse.y);
+        if (br.hover_link != old_hover) {
+            window_t *w = wm_get_window(br.hwnd);
+            if (w) w->flags |= WF_DIRTY;
+            wm_mark_dirty();
+        }
+
         if (br.mode == MODE_URL_INPUT)
             textarea_event(&br.addr_ta, ev);
         return true;
@@ -1250,9 +1364,11 @@ int main(void) {
     memset(&br, 0, sizeof(br));
     br.btn_pressed = -1;
     br.selected_link = -1;
+    br.hover_link = -1;
     app_task = xTaskGetCurrentTaskHandle();
 
     http_init();
+    cfont_init();
 
     /* Allocate receive ring buffer in PSRAM (plenty of space) */
     br.recv_ring = (uint8_t *)psram_alloc(RECV_RING_SIZE);
@@ -1346,9 +1462,7 @@ int main(void) {
         xTimerDelete(br.blink_timer, 0);
     }
 
-    /* Free render page buffers */
-    if (br.page.lines) free(br.page.lines);
-    if (br.page.links) free(br.page.links);
+    /* Render page buffers are in PSRAM — freed on app exit automatically */
     if (br.recv_ring) psram_free(br.recv_ring);
 
     dbg_printf("[manul] exited\n");

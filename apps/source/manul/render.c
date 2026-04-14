@@ -71,7 +71,7 @@ static uint8_t decode_utf8_char(const char *s, int *advance) {
         if (cp == 0x2014) return '-';  /* em dash */
         if (cp == 0x2018 || cp == 0x2019) return '\''; /* smart quotes */
         if (cp == 0x201C || cp == 0x201D) return '"';   /* smart double quotes */
-        if (cp == 0x2022) return '*';  /* bullet */
+        if (cp == 0x2022) return 0x95;  /* bullet • */
         if (cp == 0x2026) return '.';  /* ellipsis -> single dot */
         if (cp == 0x00AB || cp == 0x00BB) return '"';   /* guillemets */
         /* U+0450..U+045F */
@@ -145,7 +145,8 @@ static render_line_t *ensure_line(render_page_t *page) {
             return &page->lines[page->num_lines - 1];
         uint16_t newcap = page->capacity + 64;
         if (newcap > RENDER_MAX_LINES) newcap = RENDER_MAX_LINES;
-        render_line_t *nl = (render_line_t *)malloc(newcap * sizeof(render_line_t));
+        render_line_t *nl = (render_line_t *)psram_alloc(newcap * sizeof(render_line_t));
+        if (!nl) nl = (render_line_t *)malloc(newcap * sizeof(render_line_t));
         if (!nl) return &page->lines[page->num_lines - 1];
         memcpy(nl, page->lines, page->num_lines * sizeof(render_line_t));
         free(page->lines);
@@ -154,6 +155,12 @@ static render_line_t *ensure_line(render_page_t *page) {
     }
     render_line_t *line = &page->lines[page->num_lines];
     __memset(line, 0, sizeof(render_line_t));
+    /* link_id must be -1 (no link), not 0 (which is a valid link index) */
+    {
+        int ci;
+        for (ci = 0; ci < RENDER_MAX_COLS; ci++)
+            line->cells[ci].link_id = -1;
+    }
     page->num_lines++;
     return line;
 }
@@ -165,6 +172,14 @@ static render_line_t *current_line(render_ctx_t *ctx) {
 }
 
 static void new_line(render_ctx_t *ctx) {
+    /* Collapse multiple blank lines: if the current line is blank
+     * AND the previous line is also blank, don't add another. */
+    if (ctx->page->num_lines >= 2) {
+        render_line_t *cur = &ctx->page->lines[ctx->page->num_lines - 1];
+        render_line_t *prev = &ctx->page->lines[ctx->page->num_lines - 2];
+        if (cur->len == 0 && prev->len == 0)
+            return;  /* already have a blank line, skip */
+    }
     ensure_line(ctx->page);
     ctx->col = ctx->indent;
     ctx->last_was_space = true;
@@ -192,6 +207,25 @@ static void put_char(render_ctx_t *ctx, char ch) {
     if (ctx->page->num_lines >= RENDER_MAX_LINES && ctx->col >= RENDER_MAX_COLS)
         return;
 
+    /* Emit deferred bullet when real content arrives.
+     * Temporarily clear anchor state so bullet/space don't
+     * inherit the link_id from the <a> tag that follows. */
+    if (ctx->pending_bullet_len > 0 && ch != ' ') {
+        bool saved_anchor = ctx->in_anchor;
+        int16_t saved_lid = ctx->current_link_id;
+        ctx->in_anchor = false;
+        ctx->current_link_id = -1;
+
+        uint8_t bi;
+        uint8_t saved_len = ctx->pending_bullet_len;
+        ctx->pending_bullet_len = 0;
+        for (bi = 0; bi < saved_len; bi++)
+            put_char(ctx, ctx->pending_bullet[bi]);
+
+        ctx->in_anchor = saved_anchor;
+        ctx->current_link_id = saved_lid;
+    }
+
     render_line_t *line = current_line(ctx);
 
     if (ctx->col >= RENDER_MAX_COLS) {
@@ -210,6 +244,8 @@ static void put_char(render_ctx_t *ctx, char ch) {
     ctx->col++;
     if (ctx->col > line->len)
         line->len = ctx->col;
+    if (ctx->heading_level > 0)
+        line->heading = ctx->heading_level;
 
     ctx->last_was_space = (ch == ' ');
     ctx->at_line_start = false;
@@ -222,6 +258,8 @@ static void put_string(render_ctx_t *ctx, const char *s) {
 }
 
 static void emit_block_gap(render_ctx_t *ctx) {
+    /* Discard any pending bullet from an empty <li> */
+    ctx->pending_bullet_len = 0;
     /* Ensure a blank line between block elements */
     if (ctx->page->num_lines > 0 && ctx->col > ctx->indent) {
         new_line(ctx);
@@ -248,7 +286,10 @@ static void flush_pending(render_ctx_t *ctx) {
 static void update_indent(render_ctx_t *ctx) {
     uint8_t ind = 0;
     ind += ctx->blockquote_depth * 2;
-    ind += ctx->list_depth * 2;
+    /* First list level has no indent (bullet provides hierarchy).
+     * Nested lists indent by 2 chars per additional level. */
+    if (ctx->list_depth > 1)
+        ind += (ctx->list_depth - 1) * 2;
     if (ind > 20) ind = 20;
     ctx->indent = ind;
 }
@@ -256,21 +297,7 @@ static void update_indent(render_ctx_t *ctx) {
 static int16_t add_link(render_ctx_t *ctx, const char *url) {
     render_page_t *pg = ctx->page;
     if (pg->num_links >= RENDER_MAX_LINKS) return -1;
-
-    /* Grow links array if needed */
-    if (pg->links == 0) {
-        pg->links = (render_link_t *)malloc(32 * sizeof(render_link_t));
-        if (!pg->links) return -1;
-    } else if (pg->num_links >= 32 && (pg->num_links & (pg->num_links - 1)) == 0) {
-        /* Power of 2 growth */
-        uint16_t newcap = pg->num_links * 2;
-        if (newcap > RENDER_MAX_LINKS) newcap = RENDER_MAX_LINKS;
-        render_link_t *nl = (render_link_t *)malloc(newcap * sizeof(render_link_t));
-        if (!nl) return -1;
-        memcpy(nl, pg->links, pg->num_links * sizeof(render_link_t));
-        free(pg->links);
-        pg->links = nl;
-    }
+    if (!pg->links) return -1;
 
     render_link_t *lnk = &pg->links[pg->num_links];
     __memset(lnk, 0, sizeof(render_link_t));
@@ -292,6 +319,9 @@ static void close_link(render_ctx_t *ctx) {
     }
     ctx->in_anchor = false;
     ctx->current_link_id = -1;
+    /* Add space after link so adjacent links don't run together */
+    if (!ctx->at_line_start && ctx->col > 0)
+        put_char(ctx, ' ');
 }
 
 /* ========================================================================
@@ -569,22 +599,34 @@ static void handle_open_tag(render_ctx_t *ctx, const html_token_t *tok) {
     /* List item */
     if (manul_strcasecmp(tag, "li") == 0) {
         new_line(ctx);
+        /* Defer bullet — only emit when actual content follows.
+         * This hides empty list items (e.g. <li><img alt=""></li>). */
+        ctx->pending_bullet_len = 0;
         {
             uint8_t si;
-            for (si = 0; si < ctx->indent; si++) put_char(ctx, ' ');
+            for (si = 0; si < ctx->indent && ctx->pending_bullet_len < 7; si++)
+                ctx->pending_bullet[ctx->pending_bullet_len++] = ' ';
         }
         if (ctx->list_depth > 0) {
             uint8_t li_depth = ctx->list_depth - 1;
             if (li_depth < 8 && ctx->ordered_list[li_depth]) {
                 ctx->list_counter[li_depth]++;
                 char nbuf[8];
-                snprintf(nbuf, sizeof(nbuf), "%u. ", (unsigned)ctx->list_counter[li_depth]);
-                put_string(ctx, nbuf);
+                snprintf(nbuf, sizeof(nbuf), "%u.", (unsigned)ctx->list_counter[li_depth]);
+                const char *np = nbuf;
+                while (*np && ctx->pending_bullet_len < 7)
+                    ctx->pending_bullet[ctx->pending_bullet_len++] = *np++;
             } else {
-                put_string(ctx, "* ");
+                if (ctx->pending_bullet_len < 7)
+                    ctx->pending_bullet[ctx->pending_bullet_len++] = (char)0x95;
             }
+            if (ctx->pending_bullet_len < 7)
+                ctx->pending_bullet[ctx->pending_bullet_len++] = ' ';
         } else {
-            put_string(ctx, "* ");
+            if (ctx->pending_bullet_len < 7)
+                ctx->pending_bullet[ctx->pending_bullet_len++] = (char)0x95;
+            if (ctx->pending_bullet_len < 7)
+                ctx->pending_bullet[ctx->pending_bullet_len++] = ' ';
         }
         return;
     }
@@ -614,16 +656,34 @@ static void handle_open_tag(render_ctx_t *ctx, const html_token_t *tok) {
         return;
     }
 
-    /* Image - show as [alt] or [IMAGE] */
+    /* Image - show [alt] only if alt has meaningful text */
     if (manul_strcasecmp(tag, "img") == 0) {
         const char *alt = find_attr(tok, "alt");
-        if (alt && alt[0]) {
-            put_char(ctx, '[');
-            put_string(ctx, alt);
-            put_char(ctx, ']');
-        } else {
-            put_string(ctx, "[IMAGE]");
+        if (alt) {
+            /* Check if alt has any alphanumeric content */
+            const char *p = alt;
+            bool has_alnum = false;
+            while (*p && !has_alnum) {
+                uint8_t c = (uint8_t)*p;
+                if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                    (c >= '0' && c <= '9') || c >= 0xC0)  /* Cyrillic in UTF-8 */
+                    has_alnum = true;
+                p++;
+            }
+            if (has_alnum) {
+                put_char(ctx, '[');
+                p = alt;
+                while (*p) {
+                    int adv = 1;
+                    uint8_t ch = decode_utf8_char(p, &adv);
+                    put_char(ctx, (char)ch);
+                    p += adv;
+                }
+                put_char(ctx, ']');
+            }
+            /* Empty or non-alnum alt: skip entirely */
         }
+        /* No alt attribute: skip entirely (don't show [IMAGE]) */
         return;
     }
 
@@ -835,28 +895,31 @@ static void handle_close_tag(render_ctx_t *ctx, const html_token_t *tok) {
 
 void render_init(render_page_t *page) {
     __memset(page, 0, sizeof(render_page_t));
-    page->capacity = 64;
-    page->lines = (render_line_t *)malloc(page->capacity * sizeof(render_line_t));
+    /* Pre-allocate full capacity in PSRAM to avoid repeated realloc */
+    page->capacity = RENDER_MAX_LINES;
+    page->lines = (render_line_t *)psram_alloc(page->capacity * sizeof(render_line_t));
+    if (!page->lines) {
+        /* Fallback: smaller SRAM allocation */
+        page->capacity = 64;
+        page->lines = (render_line_t *)malloc(page->capacity * sizeof(render_line_t));
+    }
     if (page->lines) {
         __memset(page->lines, 0, page->capacity * sizeof(render_line_t));
     }
-    page->links = 0;
+    if (!page->links) {
+        page->links = (render_link_t *)psram_alloc(RENDER_MAX_LINKS * sizeof(render_link_t));
+        if (!page->links)
+            page->links = (render_link_t *)malloc(RENDER_MAX_LINKS * sizeof(render_link_t));
+    }
     page->num_links = 0;
     page->num_lines = 0;
     page->title[0] = '\0';
 }
 
 void render_clear(render_page_t *page) {
-    if (page->lines) {
-        free(page->lines);
-        page->lines = 0;
-    }
-    if (page->links) {
-        free(page->links);
-        page->links = 0;
-    }
+    /* Keep allocated buffers (PSRAM) — just reset counters.
+     * This avoids repeated alloc/free between page navigations. */
     page->num_lines = 0;
-    page->capacity = 0;
     page->num_links = 0;
     page->title[0] = '\0';
 }
@@ -890,17 +953,17 @@ void render_process_token(const void *token, void *user_ctx) {
     if (tok->type == HTML_TOKEN_TEXT) {
         /* Title text capture */
         if (ctx->in_title && tok->text_len > 0) {
-            uint16_t tlen = tok->text_len;
-            if (tlen >= sizeof(ctx->page->title))
-                tlen = sizeof(ctx->page->title) - 1;
-            /* Append to title */
+            /* Decode UTF-8 to Win1251 for the title */
             uint16_t cur = (uint16_t)strlen(ctx->page->title);
-            uint16_t avail = (uint16_t)(sizeof(ctx->page->title) - 1 - cur);
-            if (tlen > avail) tlen = avail;
-            if (tlen > 0) {
-                memcpy(ctx->page->title + cur, tok->text, tlen);
-                ctx->page->title[cur + tlen] = '\0';
+            const char *p = tok->text;
+            const char *end = tok->text + tok->text_len;
+            while (p < end && cur + 1 < sizeof(ctx->page->title)) {
+                int adv = 1;
+                uint8_t ch = decode_utf8_char(p, &adv);
+                ctx->page->title[cur++] = (char)ch;
+                p += adv;
             }
+            ctx->page->title[cur] = '\0';
         }
         if (!ctx->suppress_output && tok->text_len > 0) {
             flush_pending(ctx);

@@ -16,6 +16,7 @@ add_executable(${PROJECT_NAME}
     render.c
     http.c
     url.c
+    font.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../api/m-os-api-sdtfn.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../api/m-os-api-math.c
 )
