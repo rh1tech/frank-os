@@ -344,6 +344,12 @@ static void fm_refresh(filemanager_t *fm) {
         }
     }
 
+    /* Give keyboard focus to the first item (if any) */
+    if (fm->entry_count > 0) {
+        fm->focus_index = 0;
+        fm->anchor_index = 0;
+    }
+
     /* Update window title — truncate with "..." if path too long */
     {
         int path_len = (int)strlen(fm->path);
@@ -525,6 +531,48 @@ static void fm_clamp_scroll(filemanager_t *fm, int16_t client_h) {
     if (max_scroll < 0) max_scroll = 0;
     if (fm->scroll_y > max_scroll) fm->scroll_y = max_scroll;
     if (fm->scroll_y < 0) fm->scroll_y = 0;
+}
+
+/* Number of columns for current view mode */
+static int fm_get_cols(filemanager_t *fm, int16_t client_w) {
+    int16_t file_w = client_w - FN_SCROLLBAR_W;
+    switch (fm->view_mode) {
+    case FN_VIEW_LARGE_ICONS:
+        { int c = file_w / LARGE_CELL_W; return c < 1 ? 1 : c; }
+    case FN_VIEW_SMALL_ICONS:
+        { int c = file_w / SMALL_CELL_W; return c < 1 ? 1 : c; }
+    case FN_VIEW_LIST:
+    default:
+        return 1;
+    }
+}
+
+/* Ensure the focused item is scrolled into view */
+static void fm_scroll_into_view(filemanager_t *fm, int16_t client_w,
+                                 int16_t client_h) {
+    if (fm->focus_index < 0 || fm->focus_index >= (int)fm->entry_count)
+        return;
+
+    int cols = fm_get_cols(fm, client_w);
+    int cell_h, extra = 0;
+    switch (fm->view_mode) {
+    case FN_VIEW_LARGE_ICONS: cell_h = LARGE_CELL_H; break;
+    case FN_VIEW_SMALL_ICONS: cell_h = SMALL_CELL_H; break;
+    case FN_VIEW_LIST:        cell_h = LIST_ROW_H; extra = LIST_HDR_H; break;
+    default: return;
+    }
+
+    int row = fm->focus_index / cols;
+    int item_top = row * cell_h + extra;
+    int item_bot = item_top + cell_h;
+    int16_t fah = fm_file_area_height(client_h);
+
+    if (item_top < fm->scroll_y)
+        fm->scroll_y = (int16_t)item_top;
+    else if (item_bot > fm->scroll_y + fah)
+        fm->scroll_y = (int16_t)(item_bot - fah);
+
+    fm_clamp_scroll(fm, client_h);
 }
 
 /*==========================================================================
@@ -754,6 +802,18 @@ static void fm_paint_large_icons(filemanager_t *fm, int16_t cw, int16_t ch) {
             wd_fill_rect(tx - 1, cy + 36, tw + 2, FONT_UI_HEIGHT + 2, COLOR_BLUE);
         }
         wd_text_ui(tx, cy + 37, label, fg, bg);
+
+        /* Focus rectangle (dotted) around the focused item */
+        if (i == (int)fm->focus_index) {
+            for (int px = cx + 1; px < cx + LARGE_CELL_W - 1; px += 2) {
+                wd_pixel(px, cy, COLOR_BLACK);
+                wd_pixel(px, cy + LARGE_CELL_H - 1, COLOR_BLACK);
+            }
+            for (int py = cy; py < cy + LARGE_CELL_H - 1; py += 2) {
+                wd_pixel(cx + 1, py, COLOR_BLACK);
+                wd_pixel(cx + LARGE_CELL_W - 2, py, COLOR_BLACK);
+            }
+        }
     }
 }
 
@@ -790,6 +850,18 @@ static void fm_paint_small_icons(filemanager_t *fm, int16_t cw, int16_t ch) {
         fm_ellipsis(slabel, sizeof(slabel), e->name, SMALL_CELL_W - 22);
         wd_text_ui(cx + 20, cy + (SMALL_CELL_H - FONT_UI_HEIGHT) / 2,
                    slabel, fg, bg);
+
+        /* Focus rectangle (dotted) */
+        if (i == (int)fm->focus_index) {
+            for (int px = cx; px < cx + SMALL_CELL_W; px += 2) {
+                wd_pixel(px, cy, COLOR_BLACK);
+                wd_pixel(px, cy + SMALL_CELL_H - 1, COLOR_BLACK);
+            }
+            for (int py = cy; py < cy + SMALL_CELL_H - 1; py += 2) {
+                wd_pixel(cx, py, COLOR_BLACK);
+                wd_pixel(cx + SMALL_CELL_W - 1, py, COLOR_BLACK);
+            }
+        }
     }
 }
 
@@ -894,6 +966,18 @@ static void fm_paint_list(filemanager_t *fm, int16_t cw, int16_t ch) {
                                e->is_executable ? L(STR_FM_APPLICATION) : L(STR_FM_FILE_TYPE);
         wd_text_ui(name_w + size_w + 4, ry + (LIST_ROW_H - FONT_UI_HEIGHT) / 2,
                    type_str, fg, bg);
+
+        /* Focus rectangle (dotted) */
+        if (i == (int)fm->focus_index) {
+            for (int px = 0; px < file_w; px += 2) {
+                wd_pixel(px, ry, COLOR_BLACK);
+                wd_pixel(px, ry + LIST_ROW_H - 1, COLOR_BLACK);
+            }
+            for (int py = ry; py < ry + LIST_ROW_H - 1; py += 2) {
+                wd_pixel(0, py, COLOR_BLACK);
+                wd_pixel(file_w - 1, py, COLOR_BLACK);
+            }
+        }
     }
 }
 
@@ -1967,6 +2051,161 @@ static bool fm_event(hwnd_t hwnd, const window_event_t *event) {
         if (sc == 0x3A /* HID F1 */) {
             window_event_t ce = {0}; ce.type = WM_COMMAND; ce.command.id = FN_CMD_ABOUT;
             wm_post_event(hwnd, &ce); return true;
+        }
+        /* Tab: give focus to first item if nothing focused */
+        if (sc == 0x2B /* HID TAB */) {
+            if (fm->entry_count > 0 && fm->focus_index < 0) {
+                fm->focus_index = 0;
+                fm->anchor_index = 0;
+                fm_clear_selection(fm);
+                fm->entries[0].sel_flags |= FN_SEL_SELECTED;
+                fm_update_selection_count(fm);
+                fm_scroll_into_view(fm, cw, ch);
+                fm_invalidate(fm, FM_DIRTY_FILES | FM_DIRTY_STATUSBAR);
+            }
+            return true;
+        }
+        /* Arrow keys: move focus in the grid */
+        if (sc == 0x4F || sc == 0x50 || sc == 0x51 || sc == 0x52) {
+            if (fm->entry_count == 0) return true;
+            int cols = fm_get_cols(fm, cw);
+            int old_idx = fm->focus_index;
+            int new_idx = old_idx;
+
+            if (old_idx < 0) {
+                new_idx = 0;
+            } else {
+                switch (sc) {
+                case 0x4F: /* RIGHT */ new_idx = old_idx + 1; break;
+                case 0x50: /* LEFT  */ new_idx = old_idx - 1; break;
+                case 0x51: /* DOWN  */ new_idx = old_idx + cols; break;
+                case 0x52: /* UP    */ new_idx = old_idx - cols; break;
+                }
+            }
+            if (new_idx < 0) new_idx = 0;
+            if (new_idx >= (int)fm->entry_count)
+                new_idx = (int)fm->entry_count - 1;
+            if (new_idx == old_idx && old_idx >= 0) return true;
+
+            fm->focus_index = (int16_t)new_idx;
+            if (mods & KMOD_SHIFT) {
+                /* Extend selection from anchor */
+                if (fm->anchor_index < 0) fm->anchor_index = new_idx;
+                fm_clear_selection(fm);
+                int lo = fm->anchor_index < new_idx ? fm->anchor_index : new_idx;
+                int hi = fm->anchor_index > new_idx ? fm->anchor_index : new_idx;
+                for (int i = lo; i <= hi; i++)
+                    fm->entries[i].sel_flags |= FN_SEL_SELECTED;
+            } else if (!(mods & KMOD_CTRL)) {
+                /* Normal move: select just the focused item */
+                fm_clear_selection(fm);
+                fm->entries[new_idx].sel_flags |= FN_SEL_SELECTED;
+                fm->anchor_index = new_idx;
+            }
+            /* Ctrl+arrow: move focus without changing selection */
+
+            fm_update_selection_count(fm);
+            fm_scroll_into_view(fm, cw, ch);
+            fm_invalidate(fm, FM_DIRTY_FILES | FM_DIRTY_SCROLLBAR |
+                               FM_DIRTY_STATUSBAR);
+            return true;
+        }
+        /* Space: toggle selection on focused item (Ctrl-style) */
+        if (sc == 0x2C /* HID SPACE */ && !(mods & KMOD_CTRL)) {
+            if (fm->focus_index >= 0 && fm->focus_index < (int)fm->entry_count) {
+                fm->entries[fm->focus_index].sel_flags ^= FN_SEL_SELECTED;
+                fm->anchor_index = fm->focus_index;
+                fm_update_selection_count(fm);
+                fm_invalidate(fm, FM_DIRTY_FILES | FM_DIRTY_STATUSBAR);
+            }
+            return true;
+        }
+        /* Home: focus first item */
+        if (sc == 0x4A /* HID HOME */) {
+            if (fm->entry_count > 0) {
+                fm->focus_index = 0;
+                if (!(mods & KMOD_CTRL)) {
+                    fm_clear_selection(fm);
+                    fm->entries[0].sel_flags |= FN_SEL_SELECTED;
+                    fm->anchor_index = 0;
+                }
+                if (mods & KMOD_SHIFT) {
+                    if (fm->anchor_index < 0) fm->anchor_index = 0;
+                    fm_clear_selection(fm);
+                    for (int i = 0; i <= fm->anchor_index; i++)
+                        fm->entries[i].sel_flags |= FN_SEL_SELECTED;
+                }
+                fm_update_selection_count(fm);
+                fm_scroll_into_view(fm, cw, ch);
+                fm_invalidate(fm, FM_DIRTY_FILES | FM_DIRTY_SCROLLBAR |
+                                   FM_DIRTY_STATUSBAR);
+            }
+            return true;
+        }
+        /* End: focus last item */
+        if (sc == 0x4D /* HID END */) {
+            if (fm->entry_count > 0) {
+                int last = (int)fm->entry_count - 1;
+                fm->focus_index = (int16_t)last;
+                if (!(mods & KMOD_CTRL)) {
+                    fm_clear_selection(fm);
+                    fm->entries[last].sel_flags |= FN_SEL_SELECTED;
+                    fm->anchor_index = last;
+                }
+                if (mods & KMOD_SHIFT) {
+                    if (fm->anchor_index < 0) fm->anchor_index = last;
+                    fm_clear_selection(fm);
+                    int lo = fm->anchor_index < last ? fm->anchor_index : last;
+                    int hi = fm->anchor_index > last ? fm->anchor_index : last;
+                    for (int i = lo; i <= hi; i++)
+                        fm->entries[i].sel_flags |= FN_SEL_SELECTED;
+                }
+                fm_update_selection_count(fm);
+                fm_scroll_into_view(fm, cw, ch);
+                fm_invalidate(fm, FM_DIRTY_FILES | FM_DIRTY_SCROLLBAR |
+                                   FM_DIRTY_STATUSBAR);
+            }
+            return true;
+        }
+        /* Page Up / Page Down */
+        if (sc == 0x4B /* HID PGUP */ || sc == 0x4E /* HID PGDN */) {
+            if (fm->entry_count > 0) {
+                int cols = fm_get_cols(fm, cw);
+                int cell_h;
+                switch (fm->view_mode) {
+                case FN_VIEW_LARGE_ICONS: cell_h = LARGE_CELL_H; break;
+                case FN_VIEW_SMALL_ICONS: cell_h = SMALL_CELL_H; break;
+                default:                  cell_h = LIST_ROW_H; break;
+                }
+                int16_t fah = fm_file_area_height(ch);
+                int page_rows = fah / cell_h;
+                if (page_rows < 1) page_rows = 1;
+                int step = page_rows * cols;
+                int idx = fm->focus_index;
+                if (idx < 0) idx = 0;
+                if (sc == 0x4B) idx -= step; else idx += step;
+                if (idx < 0) idx = 0;
+                if (idx >= (int)fm->entry_count)
+                    idx = (int)fm->entry_count - 1;
+                fm->focus_index = (int16_t)idx;
+                if (!(mods & KMOD_SHIFT)) {
+                    fm_clear_selection(fm);
+                    fm->entries[idx].sel_flags |= FN_SEL_SELECTED;
+                    fm->anchor_index = idx;
+                } else {
+                    if (fm->anchor_index < 0) fm->anchor_index = idx;
+                    fm_clear_selection(fm);
+                    int lo = fm->anchor_index < idx ? fm->anchor_index : idx;
+                    int hi = fm->anchor_index > idx ? fm->anchor_index : idx;
+                    for (int i = lo; i <= hi; i++)
+                        fm->entries[i].sel_flags |= FN_SEL_SELECTED;
+                }
+                fm_update_selection_count(fm);
+                fm_scroll_into_view(fm, cw, ch);
+                fm_invalidate(fm, FM_DIRTY_FILES | FM_DIRTY_SCROLLBAR |
+                                   FM_DIRTY_STATUSBAR);
+            }
+            return true;
         }
         /* Menu/Application key (0x65) or Ctrl+Space: open context menu */
         if (sc == 0x65 || (sc == 0x2C && (mods & KMOD_CTRL))) {
