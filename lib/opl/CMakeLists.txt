@@ -25,6 +25,6 @@ target_include_directories(opl PRIVATE
     ${CMAKE_SOURCE_DIR}/drivers/fatfs
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/lib/FreeRTOS-Kernel/include
-    ${CMAKE_SOURCE_DIR}/lib/FreeRTOS-Kernel/portable/ThirdParty/Community-Supported-Ports/GCC/RP2350_ARM_NTZ/non_secure
+    ${CMAKE_SOURCE_DIR}/lib/FreeRTOS-Kernel/portable/ThirdParty/GCC/RP2350_ARM_NTZ/non_secure
 )
 target_link_libraries(opl PRIVATE hardware_interp hardware_gpio)
