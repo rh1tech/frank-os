@@ -1,5 +1,7 @@
 # FRANK OS
 
+Official page: **[frank.rh1.tech](https://frank.rh1.tech/)** — hub for all FRANK boards and firmware.
+
 Desktop operating system for the RP2350 microcontroller. Windowed GUI with mouse, terminal, file manager, and apps, all in 520 KB of SRAM.
 
 Built on FreeRTOS with DVI video output, PS/2 keyboard and mouse input, SD card storage, and optional PSRAM for application memory. Compatible with [Murmulator OS 2](https://github.com/DnCraptor/murmulator-os2) applications.
