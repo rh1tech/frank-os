@@ -24,6 +24,8 @@ static void settings_defaults(void) {
     g_settings.dblclick_ms   = 400;
     g_settings.cpu_freq_mhz  = CPU_CLOCK_MHZ;
     g_settings.psram_freq_mhz = 0;     /* compile default */
+    g_settings.rtc_scl_pin   = RTC_PIN_SCL;
+    g_settings.rtc_sda_pin   = RTC_PIN_SDA;
 }
 
 void settings_load(void) {
@@ -48,6 +50,9 @@ void settings_load(void) {
             g_settings.dblclick_ms = 400;
         if (g_settings.theme_id >= THEME_COUNT)
             g_settings.theme_id = THEME_ID_WIN95;
+        /* Older settings files stored 0 here — fall back to board defaults. */
+        if (g_settings.rtc_scl_pin == 0) g_settings.rtc_scl_pin = RTC_PIN_SCL;
+        if (g_settings.rtc_sda_pin == 0) g_settings.rtc_sda_pin = RTC_PIN_SDA;
         /* Apply saved theme */
         theme_set(g_settings.theme_id);
     }

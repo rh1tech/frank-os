@@ -119,6 +119,14 @@ static const char *str_en[] = {
     [STR_HDR_SIGNAL]       = "Signal",
     [STR_HDR_TYPE]         = "Type",
     [STR_ERR_NO_NET_ADAPTER] = "No network adapter detected.\n\nPlease connect a network\nadapter and reboot.",
+    [STR_NET_TAB_ADAPTER]  = "Adapter",
+    [STR_NET_TAB_WIFI]     = "Wi-Fi",
+    [STR_NET_RX_PIN]       = "RX pin:",
+    [STR_NET_TX_PIN]       = "TX pin:",
+    [STR_NET_PROBING]      = "Probing adapter...",
+    [STR_NET_NO_ADAPTER_PINS] = "No adapter found on\nthese pins. Check the\nwiring and try again.",
+    [STR_NET_ADAPTER_HINT] = "Enter the GPIO pins (16-47)\nwired to the network adapter,\nthen press Connect.",
+    [STR_NET_INVALID_PINS] = "Invalid pins. Use distinct\nGPIO numbers in 16-47.",
 
     /* File manager - toolbar */
     [STR_FM_BACK]          = "Back",
@@ -222,6 +230,23 @@ static const char *str_en[] = {
     [STR_STARTUP_APP]      = "Startup app",
     [STR_FULLSCREEN_MODE]  = "Fullscreen mode",
     [STR_NONE]             = "(none)",
+
+    /* Clock / RTC settings */
+    [STR_CLOCK]            = "Clock",
+    [STR_RTC_SCL_PIN]      = "SCL pin:",
+    [STR_RTC_SDA_PIN]      = "SDA pin:",
+    [STR_RTC_TEST]         = "Test",
+    [STR_RTC_DETECTED]     = "DS3231 detected",
+    [STR_RTC_NOT_FOUND]    = "No RTC found on these pins",
+    [STR_RTC_DETECTING]    = "Detecting RTC...",
+    [STR_RTC_SET_TIME]     = "Set date and time:",
+    [STR_RTC_DATE]         = "Date (Y-M-D):",
+    [STR_RTC_TIME]         = "Time (H:M:S):",
+    [STR_RTC_APPLY]        = "Set",
+    [STR_RTC_HINT]         = "Enter the GPIO pins (16-47)\nwired to the DS3231 RTC,\nthen press Test.",
+    [STR_RTC_TIME_SET]     = "Clock set successfully.",
+    [STR_RTC_BAD_PINS]     = "Invalid pins. Use distinct\nGPIO numbers in 16-47.",
+    [STR_RTC_BAD_TIME]     = "Invalid date or time.",
 
 
 
@@ -342,6 +367,14 @@ static const char *str_ru[] = {
     [STR_HDR_SIGNAL]       = "Сигнал",
     [STR_HDR_TYPE]         = "Тип",
     [STR_ERR_NO_NET_ADAPTER] = "Сетевой адаптер не найден.\n\nВставьте сетевой адаптер\nи перезагрузите.",
+    [STR_NET_TAB_ADAPTER]  = "Адаптер",
+    [STR_NET_TAB_WIFI]     = "Wi-Fi",
+    [STR_NET_RX_PIN]       = "RX пин:",
+    [STR_NET_TX_PIN]       = "TX пин:",
+    [STR_NET_PROBING]      = "Поиск адаптера...",
+    [STR_NET_NO_ADAPTER_PINS] = "Адаптер на этих пинах\nне найден. Проверьте\nподключение.",
+    [STR_NET_ADAPTER_HINT] = "Укажите пины GPIO (16-47),\nк которым подключён адаптер,\nи нажмите Подключить.",
+    [STR_NET_INVALID_PINS] = "Неверные пины. Разные\nномера GPIO в 16-47.",
 
     /* File manager - toolbar */
     [STR_FM_BACK]          = "Назад",
@@ -445,6 +478,23 @@ static const char *str_ru[] = {
     [STR_STARTUP_APP]      = "Автозапуск",
     [STR_FULLSCREEN_MODE]  = "Полноэкранный режим",
     [STR_NONE]             = "(нет)",
+
+    /* Clock / RTC settings */
+    [STR_CLOCK]            = "Часы",
+    [STR_RTC_SCL_PIN]      = "SCL пин:",
+    [STR_RTC_SDA_PIN]      = "SDA пин:",
+    [STR_RTC_TEST]         = "Проверить",
+    [STR_RTC_DETECTED]     = "DS3231 найден",
+    [STR_RTC_NOT_FOUND]    = "Часы на этих пинах не найдены",
+    [STR_RTC_DETECTING]    = "Поиск часов...",
+    [STR_RTC_SET_TIME]     = "Установить дату и время:",
+    [STR_RTC_DATE]         = "Дата (Г-М-Д):",
+    [STR_RTC_TIME]         = "Время (Ч:М:С):",
+    [STR_RTC_APPLY]        = "Задать",
+    [STR_RTC_HINT]         = "Укажите пины GPIO (16-47),\nк которым подключён DS3231,\nи нажмите Проверить.",
+    [STR_RTC_TIME_SET]     = "Часы успешно установлены.",
+    [STR_RTC_BAD_PINS]     = "Неверные пины. Разные\nномера GPIO в 16-47.",
+    [STR_RTC_BAD_TIME]     = "Неверная дата или время.",
 
 
 

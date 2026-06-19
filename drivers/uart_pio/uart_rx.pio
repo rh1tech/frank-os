@@ -27,11 +27,11 @@ static inline void uart_rx_program_init(PIO pio, uint sm, uint offset, uint pin_
     pio_gpio_init(pio, pin_rx);
     gpio_pull_up(pin_rx);
 
-    uint pio_pin = pin_rx - pio_get_gpio_base(pio);
-
+    // sm_config_set_in_pins/jmp_pin expect ABSOLUTE pin numbers (0-47) —
+    // they handle gpio_base encoding internally. Do NOT pre-subtract it.
     pio_sm_config c = uart_rx_program_get_default_config(offset);
-    sm_config_set_in_pins(&c, pio_pin);
-    sm_config_set_jmp_pin(&c, pio_pin);
+    sm_config_set_in_pins(&c, pin_rx);
+    sm_config_set_jmp_pin(&c, pin_rx);
     // Manual push only (NO autopush) — we push after validating stop bit
     sm_config_set_in_shift(&c, true, false, 32);
     sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);

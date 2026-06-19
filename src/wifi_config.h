@@ -20,7 +20,8 @@ typedef struct {
     uint32_t magic;
     uint8_t  version;           /* 1 */
     uint8_t  auto_connect;      /* 1 = auto-connect on boot */
-    uint8_t  _pad[2];
+    uint8_t  rx_pin;            /* netcard PIO UART RX GPIO (0 = board default) */
+    uint8_t  tx_pin;            /* netcard PIO UART TX GPIO (0 = board default) */
     char     ssid[33];          /* null-terminated, max 32 chars */
     char     password[65];      /* null-terminated, max 64 chars */
 } wifi_config_t;

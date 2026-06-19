@@ -82,10 +82,20 @@ static inline uint get_psram_pin(void) {
 #define I2S_CLOCK_PIN_BASE 10   /* BCLK=10, LRCLK=11 */
 
 //=============================================================================
-// ESP-01 Netcard — PIO UART on GPIO 20/21 (swapped from HW UART1 mapping)
+// ESP-01 Netcard — PIO UART on GPIO 38/39
+//   Board wiring: GP38 → ESP's RX pin (we transmit here)
+//                 GP39 ← ESP's TX pin (we receive here)
 //=============================================================================
-#define NETCARD_PIN_TX  21   /* our TX (to ESP RX) */
-#define NETCARD_PIN_RX  20   /* our RX (from ESP TX) */
+#define NETCARD_PIN_TX  38   /* our TX (drives ESP RX) */
+#define NETCARD_PIN_RX  39   /* our RX (samples ESP TX) */
 #define NETCARD_BAUD    115200
+
+//=============================================================================
+// DS3231MZ Real-Time Clock — bit-banged I2C
+//   Board wiring: SCL=GP29, SDA=GP28 (defaults; user-configurable)
+//=============================================================================
+#define RTC_PIN_SCL     29
+#define RTC_PIN_SDA     28
+#define RTC_I2C_ADDR    0x68   /* DS3231 7-bit address */
 
 #endif // BOARD_CONFIG_H

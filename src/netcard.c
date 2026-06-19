@@ -75,13 +75,16 @@ typedef enum {
 typedef enum {
     CMD_SCAN,
     CMD_JOIN,
-    CMD_QUIT
+    CMD_QUIT,
+    CMD_SETPINS
 } net_cmd_type_t;
 
 typedef struct {
     net_cmd_type_t type;
     char ssid[33];
     char pass[65];
+    uint8_t rx_pin;
+    uint8_t tx_pin;
     nc_scan_cb_t  scan_cb;
     nc_cmd_done_cb_t done_cb;
 } net_cmd_t;
@@ -159,6 +162,7 @@ static unsigned int parse_uint(const char *s, const char **endp) {
 extern void taskbar_invalidate(void);
 
 static void nc_send_cmd(const char *cmd) {
+    printf("[NC TX] %s\n", cmd);
     serial_send_string(cmd);
     serial_send_string("\r\n");
     last_tx_tick = xTaskGetTickCount();
@@ -171,6 +175,8 @@ static void nc_send_cmd(const char *cmd) {
 /* -------------------------------------------------------------------------- */
 
 static void nc_process_line(const char *line, uint16_t len) {
+    printf("[NC RX] %s\n", line);
+
     /* ---- Final responses ---- */
 
     if (strcmp(line, "OK") == 0) {
@@ -607,20 +613,39 @@ void netcard_request_quit(nc_cmd_done_cb_t done_cb) {
     xQueueSend(cmd_queue, &cmd, 0);
 }
 
+void netcard_request_setpins(uint8_t rx_pin, uint8_t tx_pin, nc_cmd_done_cb_t done_cb) {
+    net_cmd_t cmd;
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.type = CMD_SETPINS;
+    cmd.rx_pin = rx_pin;
+    cmd.tx_pin = tx_pin;
+    cmd.done_cb = done_cb;
+    xQueueSend(cmd_queue, &cmd, 0);
+}
+
 /* -------------------------------------------------------------------------- */
 /* Netcard FreeRTOS task                                                      */
 /* -------------------------------------------------------------------------- */
 
-static bool netcard_probe(void) {
+static bool netcard_probe_ex(int attempts, uint32_t timeout, uint32_t drain_ms) {
     /* Drain stale data */
-    TickType_t settle = xTaskGetTickCount() + pdMS_TO_TICKS(500);
+    printf("[NC] Probe: draining RX for %u ms\n", (unsigned)drain_ms);
+    TickType_t settle = xTaskGetTickCount() + pdMS_TO_TICKS(drain_ms);
+    unsigned drained = 0;
     while (xTaskGetTickCount() < settle) {
-        netcard_poll();
+        while (serial_readable()) {
+            uint8_t c = serial_read_byte();
+            printf("[NC RAW] 0x%02x%s\n", c,
+                   (c >= 0x20 && c < 0x7f) ? " printable" : "");
+            drained++;
+        }
         vTaskDelay(1);
     }
+    printf("[NC] Probe: drained %u bytes, starting AT handshake\n", drained);
 
-    for (int attempt = 0; attempt < 5; attempt++) {
-        if (nc_send_and_wait("AT", NC_TIMEOUT_DEFAULT))
+    for (int attempt = 0; attempt < attempts; attempt++) {
+        printf("[NC] Probe attempt %d/%d\n", attempt + 1, attempts);
+        if (nc_send_and_wait("AT", timeout))
             return true;
 
         vTaskDelay(pdMS_TO_TICKS(200));
@@ -629,19 +654,16 @@ static bool netcard_probe(void) {
     return false;
 }
 
-static void netcard_task(void *params) {
-    (void)params;
+/* Boot-time probe: thorough (5 attempts, full timeout). */
+static bool netcard_probe(void) {
+    return netcard_probe_ex(5, NC_TIMEOUT_DEFAULT, 500);
+}
 
-    /* Quick probe — if no modem, mark as unavailable and suspend */
-    if (!netcard_probe()) {
-        netcard_available_flag = false;
-        printf("[NC] No modem detected — network unavailable\n");
-        vTaskSuspend(NULL);
-    }
+/* After a successful probe: mark available and auto-reconnect if configured. */
+static void netcard_on_modem_ready(void) {
     netcard_available_flag = true;
     printf("[NC] Modem ready\n");
 
-    /* Try auto-reconnect from saved config */
     wifi_config_t *cfg = wifi_config_get();
     if (cfg->auto_connect && cfg->ssid[0]) {
         printf("[NC] Auto-connecting to %s...\n", cfg->ssid);
@@ -650,6 +672,24 @@ static void netcard_task(void *params) {
         } else {
             printf("[NC] Auto-connect failed\n");
         }
+    }
+}
+
+extern void serial_init(void);
+
+static void netcard_task(void *params) {
+    (void)params;
+
+    /* Initialize PIO UART here so its printfs land in the USB CDC log. */
+    serial_init();
+
+    /* Quick probe — if no modem, stay in the loop (unavailable) so the user
+     * can reconfigure the RX/TX pins from the Network settings app. */
+    if (netcard_probe()) {
+        netcard_on_modem_ready();
+    } else {
+        netcard_available_flag = false;
+        printf("[NC] No modem detected — awaiting pin reconfiguration\n");
     }
 
     /* Main loop: poll UART + process command queue */
@@ -661,12 +701,20 @@ static void netcard_task(void *params) {
         if (xQueueReceive(cmd_queue, &cmd, 0) == pdTRUE) {
             switch (cmd.type) {
             case CMD_SCAN: {
+                if (!netcard_available_flag) {
+                    if (cmd.done_cb) cmd.done_cb(false);
+                    break;
+                }
                 int count = netcard_wifi_scan(cmd.scan_cb);
                 if (cmd.done_cb)
                     cmd.done_cb(count >= 0);
                 break;
             }
             case CMD_JOIN: {
+                if (!netcard_available_flag) {
+                    if (cmd.done_cb) cmd.done_cb(false);
+                    break;
+                }
                 bool ok = netcard_wifi_join(cmd.ssid, cmd.pass);
                 if (ok) {
                     /* Save credentials on successful connect */
@@ -687,6 +735,31 @@ static void netcard_task(void *params) {
                 if (cmd.done_cb)
                     cmd.done_cb(true);
                 break;
+            case CMD_SETPINS: {
+                /* Drop any existing connection before re-wiring the UART. */
+                if (wifi_connected)
+                    netcard_wifi_quit();
+                netcard_available_flag = false;
+
+                serial_set_pins(cmd.rx_pin, cmd.tx_pin);
+
+                /* Quick interactive probe so the UI isn't frozen for long. */
+                bool ok = netcard_probe_ex(3, 800, 300);
+                if (ok) {
+                    /* Persist the working pins. */
+                    wifi_config_t *wcfg = wifi_config_get();
+                    wcfg->rx_pin = cmd.rx_pin;
+                    wcfg->tx_pin = cmd.tx_pin;
+                    wifi_config_save();
+                    netcard_on_modem_ready();
+                } else {
+                    printf("[NC] No modem on RX=%u TX=%u\n",
+                           cmd.rx_pin, cmd.tx_pin);
+                }
+                if (cmd.done_cb)
+                    cmd.done_cb(ok);
+                break;
+            }
             }
         }
 

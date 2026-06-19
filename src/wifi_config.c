@@ -7,6 +7,7 @@
  */
 
 #include "wifi_config.h"
+#include "board_config.h"
 #include "ff.h"
 #include <string.h>
 #include <stdio.h>
@@ -22,6 +23,8 @@ static void wifi_config_defaults(void) {
     wifi_cfg.magic = WIFI_CONFIG_MAGIC;
     wifi_cfg.version = 1;
     wifi_cfg.auto_connect = 1;
+    wifi_cfg.rx_pin = NETCARD_PIN_RX;
+    wifi_cfg.tx_pin = NETCARD_PIN_TX;
 }
 
 void wifi_config_load(void) {
@@ -44,6 +47,10 @@ void wifi_config_load(void) {
         tmp.ssid[32] = '\0';
         tmp.password[64] = '\0';
         wifi_cfg = tmp;
+        /* Older configs stored 0 here (was reserved padding) — fall back
+         * to the board default pins so the netcard still probes. */
+        if (wifi_cfg.rx_pin == 0) wifi_cfg.rx_pin = NETCARD_PIN_RX;
+        if (wifi_cfg.tx_pin == 0) wifi_cfg.tx_pin = NETCARD_PIN_TX;
     }
 
     f_close(&f);

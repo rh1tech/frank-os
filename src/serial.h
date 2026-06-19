@@ -3,8 +3,8 @@
  * Copyright (c) 2026 Mikhail Matveev <xtreme@rh1.tech>
  * https://rh1.tech
  *
- * PIO-based UART on PIO1 for communicating with the ESP-01 netcard.
- * Must be initialized AFTER snd_init() (audio resets PIO1).
+ * PIO-based UART on PIO2 (gpio base=16) for the ESP-01 netcard.
+ * PIO0 = PS/2, PIO1 = I2S audio; only PIO2 can reach pins 38/39.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -15,10 +15,18 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/* Initialize PIO UART on PIO1 (claims 2 state machines for TX and RX).
- * Uses GPIO 20 (RX from ESP TX) and GPIO 21 (TX to ESP RX) at 115200 baud.
- * MUST be called after snd_init() because audio does a full PIO1 reset. */
+/* Initialize PIO UART on PIO2 (claims 2 state machines for TX and RX).
+ * Pins default to NETCARD_PIN_RX/TX (or the values saved in wifi_config). */
 void serial_init(void);
+
+/* Reconfigure the running PIO UART to use new RX/TX GPIO pins at runtime.
+ * Pins must be in the PIO2 window (16..47). Safe to call after serial_init();
+ * releases the previous pins, resets the RX ring buffer, and re-arms the SMs. */
+void serial_set_pins(uint8_t rx_pin, uint8_t tx_pin);
+
+/* Currently active RX/TX GPIO pins. */
+uint8_t serial_get_rx_pin(void);
+uint8_t serial_get_tx_pin(void);
 
 /* Send a single character */
 void serial_send_char(char c);

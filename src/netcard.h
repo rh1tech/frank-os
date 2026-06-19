@@ -72,4 +72,9 @@ void netcard_request_scan(nc_scan_cb_t scan_cb, nc_cmd_done_cb_t done_cb);
 void netcard_request_join(const char *ssid, const char *pass, nc_cmd_done_cb_t done_cb);
 void netcard_request_quit(nc_cmd_done_cb_t done_cb);
 
+/* Reconfigure the netcard PIO UART to use new RX/TX GPIO pins, then re-probe
+ * for the modem. On success the pins are persisted and netcard_is_available()
+ * becomes true. The done_cb reports whether a modem answered on those pins. */
+void netcard_request_setpins(uint8_t rx_pin, uint8_t tx_pin, nc_cmd_done_cb_t done_cb);
+
 #endif /* NETCARD_H */

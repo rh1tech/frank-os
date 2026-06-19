@@ -52,6 +52,8 @@
 #include "settings.h"
 #include "control_panel.h"
 #include "network_settings.h"
+#include "clock_app.h"
+#include "rtc.h"
 #include "serial.h"
 #include "netcard.h"
 #include "wifi_config.h"
@@ -205,6 +207,7 @@ static volatile bool g_spawn_navigator_pending      = false;
 static volatile bool g_open_run_dialog_pending      = false;
 static volatile bool g_spawn_control_panel_pending  = false;
 static volatile bool g_spawn_network_settings_pending = false;
+static volatile bool g_spawn_clock_settings_pending   = false;
 
 /* Boot cursor state: cursor is hidden after the hourglass timeout until
  * the user first moves the mouse.  Non-static so wm_composite can skip
@@ -446,7 +449,7 @@ static void compositor_task(void *params) {
          * window/dialog appears over a normal desktop. */
         if (g_spawn_terminal_pending || g_spawn_navigator_pending ||
             g_open_run_dialog_pending || g_spawn_control_panel_pending ||
-            g_spawn_network_settings_pending) {
+            g_spawn_network_settings_pending || g_spawn_clock_settings_pending) {
             hwnd_t fs_win = wm_get_focus();
             if (fs_win != HWND_NULL && wm_is_fullscreen(fs_win)) {
                 wm_toggle_fullscreen(fs_win);
@@ -478,6 +481,12 @@ static void compositor_task(void *params) {
             wm_set_pending_icon(net_icon16_connect_get());
             wm_set_pending_icon32(net_icon32_connect_get());
             network_settings_create();
+        }
+        if (g_spawn_clock_settings_pending) {
+            g_spawn_clock_settings_pending = false;
+            wm_set_pending_icon(clock_icon16_get());
+            wm_set_pending_icon32(clock_icon32_get());
+            clock_app_create();
         }
 
         /* Deferred fullscreen for startup app */
@@ -617,6 +626,11 @@ void spawn_control_panel(void) {
 
 void spawn_network_settings(void) {
     g_spawn_network_settings_pending = true;
+    g_video_dirty = true;
+}
+
+void spawn_clock_settings(void) {
+    g_spawn_clock_settings_pending = true;
     g_video_dirty = true;
 }
 
@@ -1036,6 +1050,15 @@ int main(void) {
     }
 
     stdio_init_all();
+#if LIB_PICO_STDIO_USB
+    /* Dev builds (USB_HID=0): USB CDC is the stdio sink. Wait until the
+     * host terminal opens the port, then sleep 3 s before any printf fires,
+     * so the whole boot log lands in the console. */
+    while (!stdio_usb_connected()) {
+        sleep_ms(10);
+    }
+    sleep_ms(3000);
+#endif
 
     // Check for saved HardFault info from previous crash
     if (g_crash_dump.magic == 0xDEAD0001) {
@@ -1112,16 +1135,20 @@ int main(void) {
     /* Load persistent settings from /fos/settings.dat (safe if no SD) */
     settings_load();
 
+    /* Initialize DS3231 RTC (bit-banged I2C on configurable pins). */
+    rtc_init();
+
     /* Initialize sound mixer (starts I2S at 44100 Hz, DMA plays silence) */
     snd_init();
 
     /* Apply saved volume from settings */
     snd_set_volume(settings_get()->volume);
 
-    /* Initialize PIO UART for ESP-01 netcard (uses PIO1 SM1+SM2).
-     * MUST be after snd_init() because audio resets PIO1 entirely. */
-    printf("Initializing PIO UART for netcard...\n"); stdio_flush();
-    serial_init();
+    /* Initialize PIO UART for ESP-01 netcard (uses PIO2 with GPIO base=16
+     * so pins 38/39 are reachable). Independent of PIO1/audio state.
+     * Moved to netcard_task start so USB CDC has enumerated and its
+     * diagnostic prints can actually be read. */
+    printf("Deferring PIO UART init to netcard_task...\n"); stdio_flush();
 
     /* Load saved WiFi config from /fos/wifi.dat */
     wifi_config_load();

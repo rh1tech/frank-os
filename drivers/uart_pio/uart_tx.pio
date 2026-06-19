@@ -17,16 +17,19 @@ bitloop:
 #include "hardware/clocks.h"
 
 static inline void uart_tx_program_init(PIO pio, uint sm, uint offset, uint pin_tx, uint baud) {
-    pio_sm_set_pins_with_mask(pio, sm, 1u << pin_tx, 1u << pin_tx);
-    pio_sm_set_pindirs_with_mask(pio, sm, 1u << pin_tx, 1u << pin_tx);
+    // 64-bit variants so pins >= 32 work (RP2350B, GPIO base 16).
+    pio_sm_set_pins_with_mask64(pio, sm, 1ull << pin_tx, 1ull << pin_tx);
+    pio_sm_set_pindirs_with_mask64(pio, sm, 1ull << pin_tx, 1ull << pin_tx);
     pio_gpio_init(pio, pin_tx);
 
-    uint pio_pin = pin_tx - pio_get_gpio_base(pio);
-
+    // sm_config_set_*_pins() expect ABSOLUTE pin numbers (0-47). They encode
+    // low 5 bits into pinctrl and bit 5 into pinhi; pio_sm_set_config() then
+    // XOR-flips the bits based on the active gpio_base. Do NOT subtract
+    // gpio_base here.
     pio_sm_config c = uart_tx_program_get_default_config(offset);
     sm_config_set_out_shift(&c, true, false, 32);  // right shift, no autopull
-    sm_config_set_out_pins(&c, pio_pin, 1);
-    sm_config_set_sideset_pins(&c, pio_pin);
+    sm_config_set_out_pins(&c, pin_tx, 1);
+    sm_config_set_sideset_pins(&c, pin_tx);
     sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);
     float div = (float)clock_get_hz(clk_sys) / (8 * baud);
     sm_config_set_clkdiv(&c, div);

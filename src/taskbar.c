@@ -14,6 +14,7 @@
 #include "swap.h"
 #include "snd.h"
 #include "netcard.h"
+#include "rtc.h"
 #include "lang.h"
 #include "settings.h"
 #include "keyboard.h"
@@ -292,20 +293,32 @@ void taskbar_draw(void) {
         /* Speaker icon */
         gfx_draw_icon_16(vol_icon_x(), ICON_Y, fn_icon16_volume_get());
 
-        /* Uptime clock: HH:MM */
-        uint32_t ticks = xTaskGetTickCount();
-        uint32_t total_sec = ticks / configTICK_RATE_HZ;
-        uint32_t hours = total_sec / 3600;
-        uint32_t minutes = (total_sec % 3600) / 60;
-        last_clock_minute = total_sec / 60;
-
+        /* Clock: real time (HH:MM) from the DS3231 RTC if it's set,
+         * otherwise fall back to system uptime. */
         char clk[6];
-        clk[0] = '0' + (hours / 10) % 10;
-        clk[1] = '0' + hours % 10;
-        clk[2] = ':';
-        clk[3] = '0' + minutes / 10;
-        clk[4] = '0' + minutes % 10;
-        clk[5] = '\0';
+        uint8_t rh, rm;
+        if (rtc_get_cached(&rh, &rm, NULL)) {
+            clk[0] = '0' + (rh / 10) % 10;
+            clk[1] = '0' + rh % 10;
+            clk[2] = ':';
+            clk[3] = '0' + rm / 10;
+            clk[4] = '0' + rm % 10;
+            clk[5] = '\0';
+            last_clock_minute = (xTaskGetTickCount() / configTICK_RATE_HZ) / 60;
+        } else {
+            uint32_t ticks = xTaskGetTickCount();
+            uint32_t total_sec = ticks / configTICK_RATE_HZ;
+            uint32_t hours = total_sec / 3600;
+            uint32_t minutes = (total_sec % 3600) / 60;
+            last_clock_minute = total_sec / 60;
+
+            clk[0] = '0' + (hours / 10) % 10;
+            clk[1] = '0' + hours % 10;
+            clk[2] = ':';
+            clk[3] = '0' + minutes / 10;
+            clk[4] = '0' + minutes % 10;
+            clk[5] = '\0';
+        }
 
         gfx_text_ui(clock_x(), CLOCK_Y, clk, COLOR_BLACK, THEME_BUTTON_FACE);
     }

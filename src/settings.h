@@ -26,7 +26,9 @@ typedef struct {
     uint8_t  theme_id;         /* 0=Win95, 1=Simple */
     uint8_t  language;         /* 0=English, 1=Russian */
     uint8_t  input_toggle;    /* 0=Alt+Shift, 1=Ctrl+Shift, 2=Alt+Space */
-    uint8_t  reserved[15];     /* pad to 32 bytes */
+    uint8_t  rtc_scl_pin;      /* DS3231 I2C SCL GPIO (0 = board default) */
+    uint8_t  rtc_sda_pin;      /* DS3231 I2C SDA GPIO (0 = board default) */
+    uint8_t  reserved[13];     /* pad to 32 bytes */
 } settings_t;
 
 /* Read from /fos/settings.dat (safe if no SD card) */

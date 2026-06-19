@@ -106,6 +106,9 @@ add_executable(frankos
     src/net_icons.c
     src/wifi_config.c
     src/network_settings.c
+    src/rtc.c
+    src/clock_app.c
+    src/clock_icon.c
 
     # MOS2 core (copied from murmulator-os2)
     src/app.c

@@ -375,7 +375,7 @@ static void compute_fw_rect(void) {
 
 static void compute_set_rect(void) {
     set_w = 148;
-    set_h = 4 + 2 * SM_ITEM_HEIGHT;  /* Control Panel + Network */
+    set_h = 4 + 3 * SM_ITEM_HEIGHT;  /* Control Panel + Network + Clock */
     set_x = sm_x + sm_w;
     /* Align with the Settings item row */
     int iy = sm_y + 2;
@@ -463,12 +463,16 @@ bool startmenu_is_open(void) {
 extern void spawn_terminal_window(void);
 extern void spawn_control_panel(void);
 extern void spawn_network_settings(void);
+extern void spawn_clock_settings(void);
 
 /* Terminal 16x16 icon (fn_icons.c) */
 extern const uint8_t *fn_icon16_terminal_get(void);
 
 /* Network icon (net_icons.c) */
 extern const uint8_t *net_icon16_connect_get(void);
+
+/* Clock icon (clock_icon.c) */
+extern const uint8_t *clock_icon16_get(void);
 
 static void execute_sub_item(int index) {
     startmenu_close();
@@ -868,6 +872,18 @@ void startmenu_draw(void) {
             gfx_text_ui(set_x + 24, sy + (SM_ITEM_HEIGHT - FONT_UI_HEIGHT) / 2,
                         L(STR_NETWORK), fg, bg);
         }
+
+        /* Clock item */
+        sy += SM_ITEM_HEIGHT;
+        {
+            bool hovered = (set_hover == 2);
+            uint8_t bg = hovered ? COLOR_BLUE : THEME_BUTTON_FACE;
+            uint8_t fg = hovered ? COLOR_WHITE : COLOR_BLACK;
+            gfx_fill_rect(set_x + 2, sy, set_w - 4, SM_ITEM_HEIGHT, bg);
+            gfx_draw_icon_16(set_x + 4, sy + 4, clock_icon16_get());
+            gfx_text_ui(set_x + 24, sy + (SM_ITEM_HEIGHT - FONT_UI_HEIGHT) / 2,
+                        L(STR_CLOCK), fg, bg);
+        }
     }
 
     /* Draw right-click context popup (if open) */
@@ -905,7 +921,7 @@ bool startmenu_mouse(uint8_t type, int16_t x, int16_t y) {
         if (type == WM_MOUSEMOVE || type == WM_LBUTTONDOWN) {
             int sy = set_y + 2;
             int new_set = -1;
-            for (int i = 0; i < 2; i++) {
+            for (int i = 0; i < 3; i++) {
                 if (y >= sy && y < sy + SM_ITEM_HEIGHT)
                     new_set = i;
                 sy += SM_ITEM_HEIGHT;
@@ -920,8 +936,10 @@ bool startmenu_mouse(uint8_t type, int16_t x, int16_t y) {
             startmenu_close();
             if (clicked == 0)
                 spawn_control_panel();
-            else
+            else if (clicked == 1)
                 spawn_network_settings();
+            else
+                spawn_clock_settings();
         }
         return true;
     }
@@ -1117,11 +1135,11 @@ bool startmenu_handle_key(uint8_t hid_code, uint8_t modifiers) {
     if (set_open) {
         switch (hid_code) {
         case 0x52: /* UP */
-            set_hover = (set_hover <= 0) ? 1 : set_hover - 1;
+            set_hover = (set_hover <= 0) ? 2 : set_hover - 1;
             wm_mark_dirty();
             return true;
         case 0x51: /* DOWN */
-            set_hover = (set_hover >= 1) ? 0 : set_hover + 1;
+            set_hover = (set_hover >= 2) ? 0 : set_hover + 1;
             wm_mark_dirty();
             return true;
         case 0x50: /* LEFT — close submenu */
@@ -1134,8 +1152,10 @@ bool startmenu_handle_key(uint8_t hid_code, uint8_t modifiers) {
                 startmenu_close();
                 if (set_hover == 0)
                     spawn_control_panel();
-                else
+                else if (set_hover == 1)
                     spawn_network_settings();
+                else
+                    spawn_clock_settings();
             }
             return true;
         case 0x29: /* ESC */
